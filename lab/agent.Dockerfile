@@ -5,7 +5,11 @@ FROM ubuntu:22.04
 
 ARG WAZUH_VERSION=4.14.5
 ENV DEBIAN_FRONTEND=noninteractive
+# pipefail so the curl|gpg key import fails the build if curl fails
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# DL3008: transitive apt deps intentionally unpinned in this throwaway lab image
+# hadolint ignore=DL3008
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl gnupg2 lsb-release ca-certificates procps iproute2 && \
@@ -15,7 +19,7 @@ RUN apt-get update && \
     echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
         > /etc/apt/sources.list.d/wazuh.list && \
     apt-get update && \
-    apt-get install -y wazuh-agent=${WAZUH_VERSION}-1 && \
+    apt-get install -y --no-install-recommends wazuh-agent=${WAZUH_VERSION}-1 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
