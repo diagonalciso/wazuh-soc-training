@@ -163,9 +163,12 @@ def materialize(template, agents, agent_os=None):
                         if h != correct and _os_family(agent_os.get(h)) == want_os]
             else:
                 cand = [h for h in all_hosts if h != correct]
-            if len(cand) < 3:                    # top up with any other host
+            # Only top up across OS families when the target has no OS filter;
+            # for an OS-locked scenario a cross-OS decoy would give the answer
+            # away, so we keep fewer (same-OS) decoys instead.
+            if len(cand) < 3 and not want_os:
                 cand += [h for h in all_hosts if h != correct and h not in cand]
-            decoys = _pick_distinct(cand, 3, set())
+            decoys = _pick_distinct(cand, min(3, len(cand)), set())
             opts = [correct] + decoys
             random.shuffle(opts)
             q["options"] = opts
