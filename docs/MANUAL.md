@@ -233,10 +233,52 @@ sudo SKIP_FLEET=1 ./bootstrap.sh    # server + tool only, no simulated agents
 sudo WAZUH_VERSION=4.14 ./bootstrap.sh   # pin a Wazuh minor
 ```
 
-### VM one-liner
+### Throwaway VM (Vagrant)
 
-A `Vagrantfile` is included: `vagrant up` boots a throwaway VM and runs the same
-bootstrap inside it.
+Prefer a disposable VM? The included `Vagrantfile` boots an Ubuntu 22.04 guest
+and runs the same `bootstrap.sh` inside it — the whole lab (Wazuh AIO + tool +
+DB-only agents) in one command, nothing installed on your host.
+
+**Prerequisites:** [Vagrant](https://developer.hashicorp.com/vagrant/downloads)
+plus a provider — VirtualBox (cross-platform) or libvirt/KVM (Linux). The VM
+needs **≥4 GB RAM** (the indexer is hungry); default is 6 GB / 2 vCPU.
+
+```bash
+# from the repo root
+vagrant up                      # boots VM, provisions Wazuh + lab + tool (~10-15 min)
+vagrant ssh                     # shell into the guest if needed
+```
+
+Then, from your host browser:
+
+```
+https://192.168.56.20           # Wazuh dashboard  (user: admin)
+http://192.168.56.20:8101       # training tool
+```
+
+The admin password is printed by the provisioner and saved inside the VM at
+`/root/wazuh-install-files.tar` — `vagrant ssh` then `sudo tar xf
+/root/wazuh-install-files.tar -O wazuh-passwords.txt` (or `sudo cat` the
+extracted file) to read it.
+
+Tune size or pick a provider explicitly:
+
+```bash
+LAB_MEM_MB=8192 LAB_CPUS=4 vagrant up            # bigger VM
+vagrant up --provider=virtualbox                 # force VirtualBox
+vagrant up --provider=libvirt                    # force KVM/libvirt
+```
+
+Reset or dispose:
+
+```bash
+vagrant provision      # re-run bootstrap.sh in place
+vagrant reload         # reboot the VM
+vagrant destroy -f     # delete the VM entirely — clean slate
+```
+
+The private-network IP (`192.168.56.20`), box, and default size live at the top
+of the `Vagrantfile`; edit there if `192.168.56.0/24` clashes on your host.
 
 ---
 
