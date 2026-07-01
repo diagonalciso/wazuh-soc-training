@@ -1,0 +1,53 @@
+{
+  "id": "win-asrep-roasting",
+  "title": "AS-REP Roasting",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "The domain controller $TARGET logged Kerberos TGT requests (Event ID 4768) for account $USER1 with pre-authentication type 0 — meaning that account has 'do not require Kerberos preauthentication' set. An attacker can request its TGT and crack it offline: AS-REP roasting. Identify the exposed account and the requesting source.",
+  "dashboard_hint": "Discover -> rule.id: 100121. Look for data.win.eventdata.preAuthType: 0 on 4768 events. Read targetUserName + ipAddress.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_asrep", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [2, 4], "spacing": [0.5, 1.5]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Credential access",
+    "target": "$TARGET",
+    "mitre": "T1558.004",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What is this activity?",
+     "options": ["AS-REP roasting", "Kerberoasting", "Password spray", "Golden ticket"],
+     "answer": "AS-REP roasting",
+     "explain": "4768 TGT requests with preAuthType 0 = the account lacks Kerberos pre-auth, so its AS-REP can be roasted offline."},
+    {"id": "account", "type": "text", "weight": 2,
+     "prompt": "Which account is exposed (no pre-auth)?",
+     "answer": ["$USER1"],
+     "explain": "targetUserName = $USER1 on the preAuthType 0 events."},
+    {"id": "indicator", "type": "choice", "weight": 2,
+     "prompt": "Which field confirms the misconfiguration being abused?",
+     "options": ["preAuthType 0", "logonType 10", "ticketEncryptionType 0x12 (AES)", "status 0xc000006d"],
+     "answer": "preAuthType 0",
+     "explain": "preAuthType 0 means 'Kerberos pre-authentication not required' — the enabling misconfig for AS-REP roasting."},
+    {"id": "srcip", "type": "text", "weight": 1,
+     "prompt": "Which source requested the ticket?",
+     "answer": ["$SRC1"],
+     "explain": "ipAddress = $SRC1 on the 4768 events."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1558.004"],
+     "explain": "T1558.004 Steal or Forge Kerberos Tickets: AS-REP Roasting."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Re-enable Kerberos pre-authentication on the account", "Reset the account password (long, random)", "Audit the domain for other preauth-disabled accounts", "Nothing — 4768 is routine"],
+     "answer": ["Re-enable Kerberos pre-authentication on the account", "Reset the account password (long, random)", "Audit the domain for other preauth-disabled accounts"],
+     "explain": "Turn pre-auth back on, rotate the (assumed-cracked) password, and sweep for every other DONT_REQ_PREAUTH account."}
+  ]
+}

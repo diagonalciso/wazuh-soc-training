@@ -1,0 +1,54 @@
+{
+  "id": "win-cred-dump-lsass",
+  "title": "LSASS Credential Dump",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "Sysmon on $TARGET recorded a process dumping the memory of LSASS via comsvcs.dll MiniDump (rundll32 ... comsvcs.dll, MiniDump ... lsass.dmp). LSASS holds cached credentials and tickets — dumping it is how attackers harvest secrets for lateral movement. Confirm the host and the technique.",
+  "dashboard_hint": "Discover -> rule.id: 100143. Read data.win.eventdata.commandLine for comsvcs.dll MiniDump / lsass.dmp.",
+  "randomize": {
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_priv_logon", "agent": "$TARGET", "count": 1, "spacing": [0.5, 1.0]},
+      {"template": "sysmon_creddump", "agent": "$TARGET", "count": 1, "spacing": [1.0, 2.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Credential access",
+    "target": "$TARGET",
+    "mitre": "T1003.001",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What is this activity?",
+     "options": ["LSASS memory / credential dumping", "Brute force", "Ransomware", "Reconnaissance"],
+     "answer": "LSASS memory / credential dumping",
+     "explain": "rundll32 calling comsvcs.dll MiniDump against LSASS writes a memory dump full of credentials."},
+    {"id": "indicator", "type": "choice", "weight": 2,
+     "prompt": "Which command-line artefact is the smoking gun?",
+     "options": ["comsvcs.dll, MiniDump ... lsass.dmp", "vssadmin delete shadows", "powershell -enc", "/etc/passwd"],
+     "answer": "comsvcs.dll, MiniDump ... lsass.dmp",
+     "explain": "comsvcs.dll MiniDump is a well-known LOLBin technique to dump LSASS without external tools."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host was the credential dump run on?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Sysmon EID 1 computer = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1003.001", "T1003"],
+     "explain": "T1003.001 OS Credential Dumping: LSASS Memory."},
+    {"id": "severity", "type": "choice", "weight": 1,
+     "prompt": "How should this be prioritised?",
+     "options": ["Critical — assume domain-wide credential theft", "Low — informational", "Medium — monitor only", "Ignore"],
+     "answer": "Critical — assume domain-wide credential theft",
+     "explain": "A successful LSASS dump means every credential cached on that host is compromised; treat as critical."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Isolate the host immediately", "Force reset of every account that logged on to it (incl. privileged)", "Hunt for lateral movement from the host", "Enable LSASS protection (RunAsPPL) / Credential Guard", "Wait and see if anything else happens"],
+     "answer": ["Isolate the host immediately", "Force reset of every account that logged on to it (incl. privileged)", "Hunt for lateral movement from the host", "Enable LSASS protection (RunAsPPL) / Credential Guard"],
+     "explain": "Isolate, rotate all exposed creds, hunt outward, and harden LSASS so it cannot be dumped again."}
+  ]
+}

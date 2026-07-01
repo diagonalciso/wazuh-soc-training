@@ -1,0 +1,53 @@
+{
+  "id": "win-lolbin-exec",
+  "title": "LOLBin Execution from Office",
+  "difficulty": "intermediate",
+  "duration_min": 12,
+  "briefing": "Sysmon on $TARGET shows a signed Windows binary (rundll32 / regsvr32 / mshta / certutil) launched by an Office application and reaching out to a remote URL. Attackers abuse these living-off-the-land binaries to run code while blending in with trusted, signed tooling. Identify the binary, the parent, and the remote host.",
+  "dashboard_hint": "Discover -> rule.id: 100142 (LOLBin). Read data.win.eventdata.image + commandLine + parentImage (WINWORD.EXE).",
+  "randomize": {
+    "ips": {"SRC1": "c2"},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "sysmon_lolbin", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [1, 2], "spacing": [1.0, 2.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Defense evasion",
+    "target": "$TARGET",
+    "mitre": "T1218",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What technique category is this?",
+     "options": ["Living-off-the-land binary (LOLBin) abuse", "Brute force", "Kerberoasting", "Ransomware"],
+     "answer": "Living-off-the-land binary (LOLBin) abuse",
+     "explain": "A signed system binary spawned by Office and calling out to a URL is LOLBin proxy execution."},
+    {"id": "parent", "type": "choice", "weight": 2,
+     "prompt": "What makes the execution suspicious rather than normal?",
+     "options": ["An Office app (WINWORD) is the parent process", "It ran at boot", "It used AES encryption", "It came from the domain controller"],
+     "answer": "An Office app (WINWORD) is the parent process",
+     "explain": "rundll32/regsvr32/etc launched by WINWORD.EXE with a network arg is a macro/payload pattern, not admin use."},
+    {"id": "srcip", "type": "text", "weight": 1,
+     "prompt": "What remote host did the binary contact (from the command line)?",
+     "answer": ["$SRC1"],
+     "explain": "The LOLBin command line references $SRC1 as the remote payload/C2 host."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host executed the LOLBin?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Sysmon EID 1 computer = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1218"],
+     "explain": "T1218 System Binary Proxy Execution (Signed Binary Proxy Execution)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Isolate the host", "Block the remote URL / IP", "Review the delivering document + mailbox", "Deploy ASR rules blocking Office child processes", "Nothing — these binaries are signed by Microsoft"],
+     "answer": ["Isolate the host", "Block the remote URL / IP", "Review the delivering document + mailbox", "Deploy ASR rules blocking Office child processes"],
+     "explain": "Signed does not mean safe. Contain, block the remote, chase the phishing doc, and stop Office spawning children via ASR."}
+  ]
+}

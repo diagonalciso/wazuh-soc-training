@@ -1,0 +1,50 @@
+{
+  "id": "win-rdp-bruteforce",
+  "title": "Windows RDP Brute-Force",
+  "difficulty": "beginner",
+  "duration_min": 10,
+  "briefing": "The Windows host $TARGET is logging a burst of failed interactive logons over RDP (Event ID 4625, logon type 10) from external addresses. Someone is guessing a remote-desktop password. Enumerate the sources, confirm the target and classify the activity.",
+  "dashboard_hint": "Discover -> rule.id: 100111 (4625 logon type 10 / RDP). Group by data.srcip and data.win.eventdata.ipAddress. Expect two external sources.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce", "SRC2": "bruteforce"},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_rdp_fail", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [8, 12], "spacing": [0.3, 1.2]},
+      {"template": "win_rdp_fail", "agent": "$TARGET", "srcips": ["$SRC2"], "count": [6, 10], "spacing": [0.3, 1.2]},
+      {"template": "win_rdp_fail", "agent": "$TARGET", "srcips": ["$SRC1", "$SRC2"], "count": [4, 8], "spacing": [0.5, 1.6]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Brute force",
+    "target": "$TARGET",
+    "mitre": "T1110.001",
+    "severity": "Medium"
+  },
+  "questions": [
+    {"id": "srcips", "type": "ipset", "weight": 3,
+     "prompt": "List ALL attacking source IPs (comma-separated).",
+     "answer": ["$SRC1", "$SRC2"],
+     "explain": "Two external IPs ($SRC1, $SRC2) generated the 4625 type-10 (RDP) failures against $TARGET."},
+    {"id": "type", "type": "choice", "weight": 1,
+     "prompt": "What class of attack is this?",
+     "options": ["Brute force", "Web attack", "Malware", "Reconnaissance", "Data exfiltration"],
+     "answer": "Brute force",
+     "explain": "Repeated failed RDP authentication from external hosts = credential brute force."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is being targeted?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Every 4625 alert carries agent.name = $TARGET (data.win.system.computer)."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1110.001", "T1110"],
+     "explain": "T1110.001 Brute Force: Password Guessing (interactive RDP)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended containment (select all that apply):",
+     "options": ["Block the source IPs at the firewall", "Restrict RDP to VPN / gateway only", "Enable account lockout + NLA", "Expose RDP to the internet for convenience", "Ignore — it's just noise"],
+     "answer": ["Block the source IPs at the firewall", "Restrict RDP to VPN / gateway only", "Enable account lockout + NLA"],
+     "explain": "Block sources, take RDP off the public internet, enforce lockout + Network Level Authentication."}
+  ]
+}

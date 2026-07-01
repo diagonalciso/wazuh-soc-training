@@ -1,0 +1,54 @@
+{
+  "id": "win-account-lockout",
+  "title": "Windows Account Lockout Storm",
+  "difficulty": "beginner",
+  "duration_min": 10,
+  "briefing": "Account $USER1 on $TARGET fired a wave of failed logons (Event ID 4625) from a single external source and then tripped a lockout (Event ID 4740). Confirm the account, the source, and whether this is a targeted guess or a misconfigured service.",
+  "dashboard_hint": "Discover -> rule.id: 100110 (4625) then rule.id: 100113 (4740 lockout). Pivot on data.win.eventdata.targetUserName and data.srcip.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_logon_fail", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [10, 15], "spacing": [0.3, 1.0]},
+      {"template": "win_lockout", "agent": "$TARGET", "user": "$USER1", "count": 1, "spacing": [0.5, 1.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Brute force",
+    "target": "$TARGET",
+    "mitre": "T1110",
+    "severity": "Medium"
+  },
+  "questions": [
+    {"id": "account", "type": "text", "weight": 2,
+     "prompt": "Which account was targeted and locked out?",
+     "answer": ["$USER1"],
+     "explain": "The 4625 failures and the 4740 lockout both name targetUserName = $USER1."},
+    {"id": "srcip", "type": "text", "weight": 2,
+     "prompt": "What is the attacking source IP?",
+     "answer": ["$SRC1"],
+     "explain": "All 4625 events carry ipAddress = $SRC1 (surfaced as data.srcip)."},
+    {"id": "type", "type": "choice", "weight": 1,
+     "prompt": "What best explains this activity?",
+     "options": ["Targeted password guessing", "Normal user typo", "Web attack", "Data exfiltration"],
+     "answer": "Targeted password guessing",
+     "explain": "10+ rapid failures from one external IP against one account, ending in lockout = deliberate guessing, not a typo."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host generated the lockout?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "The 4740 event's computer field = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1110", "T1110.001"],
+     "explain": "T1110 Brute Force."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Block the source IP", "Confirm the account owner + reset if needed", "Review lockout policy threshold", "Permanently disable the account with no review", "Ignore lockouts entirely"],
+     "answer": ["Block the source IP", "Confirm the account owner + reset if needed", "Review lockout policy threshold"],
+     "explain": "Block source, validate/rotate the account, sanity-check lockout policy so it actually slows guessing."}
+  ]
+}

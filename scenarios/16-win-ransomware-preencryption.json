@@ -1,0 +1,50 @@
+{
+  "id": "win-ransomware-preencryption",
+  "title": "Ransomware Pre-Encryption",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "On $TARGET, shadow copies were deleted (vssadmin delete shadows /all) and then a process began rapidly creating files with a new extension across a user's Documents folder. Destroying backups then mass-rewriting files is the immediate pre-encryption / encryption phase of ransomware. This is a live emergency — recognise it fast and scope it.",
+  "dashboard_hint": "Discover -> rule.id: 100144 (vssadmin shadow delete) then rule.id: 100161 (rapid file creation). Correlate on the same computer = $TARGET.",
+  "randomize": {
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "sysmon_shadow_del", "agent": "$TARGET", "count": 1, "spacing": [0.5, 1.0]},
+      {"template": "sysmon_file_create", "agent": "$TARGET", "ext": ".locked", "count": [16, 24], "spacing": [0.1, 0.4]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Ransomware",
+    "target": "$TARGET",
+    "mitre": "T1486",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What is happening?",
+     "options": ["Ransomware encryption in progress", "Brute force", "Kerberoasting", "Password spray"],
+     "answer": "Ransomware encryption in progress",
+     "explain": "Shadow-copy deletion followed by mass file creation with a new extension = active ransomware."},
+    {"id": "indicators", "type": "multi", "weight": 2,
+     "prompt": "Which two behaviours together confirm ransomware here? (select all)",
+     "options": ["vssadmin delete shadows /all (backup destruction)", "Rapid mass file creation with a new extension", "logonType 3", "preAuthType 0"],
+     "answer": ["vssadmin delete shadows /all (backup destruction)", "Rapid mass file creation with a new extension"],
+     "explain": "Inhibiting recovery (shadow delete) + high-rate file rewrite is the ransomware signature."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is encrypting?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Both the vssadmin and file-create events carry computer = $TARGET."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1486 Data Encrypted for Impact", "T1490 Inhibit System Recovery", "T1110 Brute Force", "T1558.003 Kerberoasting"],
+     "answer": ["T1486 Data Encrypted for Impact", "T1490 Inhibit System Recovery"],
+     "explain": "T1486 (encryption) + T1490 (shadow-copy deletion to block restore)."},
+    {"id": "containment", "type": "multi", "weight": 3,
+     "prompt": "Immediate response (select all that apply):",
+     "options": ["Isolate / power-contain the host NOW", "Identify and kill the encrypting process", "Check whether it is spreading to other hosts / shares", "Preserve a memory image before wipe if possible", "Wait for the encryption to finish"],
+     "answer": ["Isolate / power-contain the host NOW", "Identify and kill the encrypting process", "Check whether it is spreading to other hosts / shares", "Preserve a memory image before wipe if possible"],
+     "explain": "Speed matters: isolate, kill the process, check for spread, and grab volatile evidence — never let it finish."}
+  ]
+}

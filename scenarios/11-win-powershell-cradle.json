@@ -1,0 +1,49 @@
+{
+  "id": "win-powershell-cradle",
+  "title": "Encoded PowerShell Download Cradle",
+  "difficulty": "intermediate",
+  "duration_min": 12,
+  "briefing": "Sysmon on $TARGET recorded PowerShell launching with a hidden window and a Base64 -EncodedCommand, spawned from a document handler. That is a classic download cradle — the first stage of a phishing payload. Confirm the host, the parent chain and classify it.",
+  "dashboard_hint": "Discover -> rule.id: 100141 (Sysmon EID 1, encoded PowerShell). Read data.win.eventdata.commandLine + parentImage.",
+  "randomize": {
+    "ips": {"SRC1": "c2"},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "sysmon_ps_enc", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [1, 2], "spacing": [1.0, 2.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Execution",
+    "target": "$TARGET",
+    "mitre": "T1059.001",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What class of activity is this?",
+     "options": ["Malicious script execution", "Brute force", "Reconnaissance", "Data exfiltration"],
+     "answer": "Malicious script execution",
+     "explain": "Hidden-window PowerShell with -EncodedCommand from a document parent is stage-1 payload execution."},
+    {"id": "indicator", "type": "choice", "weight": 2,
+     "prompt": "Which single indicator is the strongest tell here?",
+     "options": ["powershell -enc / -EncodedCommand with hidden window", "logonType 3", "ticketEncryptionType 0x17", "4740 lockout"],
+     "answer": "powershell -enc / -EncodedCommand with hidden window",
+     "explain": "Legit admin scripts rarely use hidden window + Base64-encoded commands; that combo is an evasion tell."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host ran the encoded PowerShell?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "The Sysmon EID 1 event's computer = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1059.001", "T1059"],
+     "explain": "T1059.001 Command and Scripting Interpreter: PowerShell."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Isolate the host", "Decode the Base64 to recover the next stage / C2", "Hunt the same command line across the fleet", "Enable PowerShell script-block + module logging", "Ignore — PowerShell is normal admin tooling"],
+     "answer": ["Isolate the host", "Decode the Base64 to recover the next stage / C2", "Hunt the same command line across the fleet", "Enable PowerShell script-block + module logging"],
+     "explain": "Contain, decode to find the second stage, sweep for the same cradle elsewhere, and turn on deep PowerShell logging."}
+  ]
+}

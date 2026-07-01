@@ -1,0 +1,53 @@
+{
+  "id": "win-c2-beacon",
+  "title": "C2 Beacon Callback",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "Sysmon on $TARGET shows a process in an unusual path (C:\\Users\\Public) making repeated outbound TCP 443 connections to the same external IP $DST1 at a regular cadence. Steady, periodic callbacks to one external host from a non-browser process are command-and-control beaconing. Identify the C2 endpoint and the pattern.",
+  "dashboard_hint": "Discover -> rule.id: 100150 / 100151 (Sysmon EID 3). Group by data.win.eventdata.destinationIp — one IP, repeated at a regular interval.",
+  "randomize": {
+    "ips": {"DST1": "c2"},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "sysmon_netconn", "agent": "$TARGET", "srcips": ["$DST1"], "dstip": "$DST1", "count": [6, 9], "spacing": [6.0, 9.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Command and control",
+    "target": "$TARGET",
+    "mitre": "T1071.001",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What does this traffic pattern indicate?",
+     "options": ["C2 beaconing", "Web brute force", "Kerberoasting", "Normal software update"],
+     "answer": "C2 beaconing",
+     "explain": "Regular, periodic connections from one non-browser process to a single external IP = command-and-control beacon."},
+    {"id": "c2ip", "type": "text", "weight": 2,
+     "prompt": "What is the C2 / destination IP?",
+     "answer": ["$DST1"],
+     "explain": "destinationIp = $DST1 on every beacon connection."},
+    {"id": "indicator", "type": "choice", "weight": 2,
+     "prompt": "Which detail most supports a beacon (vs. normal traffic)?",
+     "options": ["Regular fixed interval to one IP from C:\\Users\\Public\\svchost.exe", "A single random web request", "logonType 10", "vssadmin delete shadows"],
+     "answer": "Regular fixed interval to one IP from C:\\Users\\Public\\svchost.exe",
+     "explain": "Beacon jitter aside, periodic same-destination callbacks from a masquerading binary in a user-writable path is the tell."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is beaconing out?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Sysmon EID 3 computer = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1071.001", "T1071", "T1571"],
+     "explain": "T1071.001 Application Layer Protocol: Web Protocols (C2 over HTTPS)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Block the C2 IP at the perimeter", "Isolate the beaconing host", "Identify + kill the beaconing process (C:\\Users\\Public path)", "Threat-intel the C2 IP for attribution", "Ignore outbound 443 — it's always allowed"],
+     "answer": ["Block the C2 IP at the perimeter", "Isolate the beaconing host", "Identify + kill the beaconing process (C:\\Users\\Public path)", "Threat-intel the C2 IP for attribution"],
+     "explain": "Sinkhole the C2, isolate the host, kill the implant, and enrich the IP to find scope + campaign."}
+  ]
+}

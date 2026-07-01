@@ -1,0 +1,55 @@
+{
+  "id": "win-rogue-admin",
+  "title": "Rogue Admin Account Created",
+  "difficulty": "intermediate",
+  "duration_min": 12,
+  "briefing": "On $TARGET a brand-new account $USER1 was created (Event ID 4720) and immediately added to a privileged group (Event ID 4732). Fresh account + instant privilege = an attacker establishing persistence and escalating. Confirm the account, the group, and the sequence.",
+  "dashboard_hint": "Discover -> rule.id: 100130 (4720 user created) and rule.id: 100131 (4732 added to group). Correlate on targetUserName / memberName = $USER1.",
+  "randomize": {
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_user_add", "agent": "$TARGET", "user": "$USER1", "count": 1, "spacing": [0.5, 1.0]},
+      {"template": "win_group_add", "agent": "$TARGET", "user": "$USER1", "group": "Domain Admins", "count": 1, "spacing": [0.5, 1.0]},
+      {"template": "win_priv_logon", "agent": "$TARGET", "user": "$USER1", "count": 1, "spacing": [0.5, 1.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Persistence",
+    "target": "$TARGET",
+    "mitre": "T1136.002",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "account", "type": "text", "weight": 2,
+     "prompt": "What is the name of the newly created account?",
+     "answer": ["$USER1"],
+     "explain": "The 4720 event names targetUserName = $USER1."},
+    {"id": "group", "type": "choice", "weight": 2,
+     "prompt": "Which group was the new account added to?",
+     "options": ["Domain Admins", "Users", "Guests", "Remote Desktop Users"],
+     "answer": "Domain Admins",
+     "explain": "The 4732 event added $USER1 to Domain Admins — full privilege, immediately."},
+    {"id": "type", "type": "choice", "weight": 1,
+     "prompt": "What is the primary intent of this sequence?",
+     "options": ["Persistence + privilege escalation", "Reconnaissance", "Data exfiltration", "Denial of service"],
+     "answer": "Persistence + privilege escalation",
+     "explain": "A new privileged account is a durable foothold plus instant elevation."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "On which host did this happen?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "All three events (4720/4732/4672) carry computer = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID for the account creation?",
+     "answer": ["T1136.002", "T1136", "T1098"],
+     "explain": "T1136.002 Create Account: Domain Account (with T1098 Account Manipulation for the group add)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Disable / delete the rogue account", "Identify WHO created it (subjectUserName) and triage that account", "Audit all privileged group membership", "Ignore — admins create accounts all the time"],
+     "answer": ["Disable / delete the rogue account", "Identify WHO created it (subjectUserName) and triage that account", "Audit all privileged group membership"],
+     "explain": "Kill the account, trace the creator (already-compromised admin), and review privileged groups for other surprises."}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "win-kerberoasting",
+  "title": "Kerberoasting a Service Account",
+  "difficulty": "intermediate",
+  "duration_min": 15,
+  "briefing": "The domain controller $TARGET logged a run of Kerberos service-ticket requests (Event ID 4769) for service account(s), all using the weak RC4 encryption type (0x17), from a single internal host. That is the signature of Kerberoasting: an authenticated attacker pulling crackable service tickets offline. Identify the requesting host and the targeted service account(s).",
+  "dashboard_hint": "Discover -> rule.id: 100120. Filter data.win.eventdata.ticketEncryptionType: 0x17 (RC4). Read serviceName + ipAddress.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce"},
+    "users": {"USER1": true},
+    "services": {"SVC1": true, "SVC2": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_kerberoast", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "service": "$SVC1", "count": [2, 3], "spacing": [0.5, 1.5]},
+      {"template": "win_kerberoast", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "service": "$SVC2", "count": [2, 3], "spacing": [0.5, 1.5]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Credential access",
+    "target": "$TARGET",
+    "mitre": "T1558.003",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What is this activity?",
+     "options": ["Kerberoasting", "Brute force", "Web attack", "Ransomware"],
+     "answer": "Kerberoasting",
+     "explain": "4769 service-ticket requests with RC4 (0x17) encryption for SPN accounts = Kerberoasting for offline cracking."},
+    {"id": "srcip", "type": "text", "weight": 2,
+     "prompt": "Which host requested the tickets (ipAddress)?",
+     "answer": ["$SRC1"],
+     "explain": "Every 4769 carries ipAddress = $SRC1 — the compromised internal host to triage."},
+    {"id": "services", "type": "ipset", "weight": 2,
+     "prompt": "Which service account(s) were requested? (comma-separated)",
+     "answer": ["$SVC1", "$SVC2"],
+     "explain": "serviceName shows $SVC1 and $SVC2 — the SPN accounts whose tickets can be cracked."},
+    {"id": "indicator", "type": "choice", "weight": 1,
+     "prompt": "Which field most strongly flags this as malicious rather than normal Kerberos traffic?",
+     "options": ["ticketEncryptionType 0x17 (RC4)", "logonType 10", "eventID 4624", "targetDomainName"],
+     "answer": "ticketEncryptionType 0x17 (RC4)",
+     "explain": "Modern tickets use AES; a burst of RC4 (0x17) requests is the roasting tell."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1558.003"],
+     "explain": "T1558.003 Steal or Forge Kerberos Tickets: Kerberoasting."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Rotate the affected service account passwords (long, random)", "Set service accounts to AES-only / disable RC4", "Triage the requesting host for compromise", "Nothing — 4769 is always benign"],
+     "answer": ["Rotate the affected service account passwords (long, random)", "Set service accounts to AES-only / disable RC4", "Triage the requesting host for compromise"],
+     "explain": "Rotate to long random secrets, kill RC4, and investigate the requesting host that is already inside."}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "id": "win-lateral-log-cleared",
+  "title": "Lateral Movement + Log Wipe",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "Host $TARGET recorded successful network logons (Event ID 4624, logon type 3) for $USER1 coming from internal host $SRC1, and then the security event log was cleared (Event ID 1102). Authenticated movement between internal hosts followed by log clearing is an attacker moving laterally and covering their tracks. Reconstruct the sequence.",
+  "dashboard_hint": "Discover -> rule.id: 100134 (4624 type 3 network logon) and rule.id: 100133 (1102 log cleared). Correlate targetUserName = $USER1, ipAddress = $SRC1.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_lateral_logon", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [3, 5], "spacing": [0.5, 1.5]},
+      {"template": "win_log_cleared", "agent": "$TARGET", "user": "$USER1", "count": 1, "spacing": [0.5, 1.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Lateral movement",
+    "target": "$TARGET",
+    "mitre": "T1021",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What is the overall activity?",
+     "options": ["Lateral movement with anti-forensics", "Brute force", "Ransomware", "Reconnaissance"],
+     "answer": "Lateral movement with anti-forensics",
+     "explain": "Successful type-3 logons from an internal host + log clearing = movement plus track-covering."},
+    {"id": "srcip", "type": "text", "weight": 2,
+     "prompt": "Which internal host did the logons come from?",
+     "answer": ["$SRC1"],
+     "explain": "The 4624 events carry ipAddress = $SRC1 — the pivot host."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Which account was used to move?",
+     "answer": ["$USER1"],
+     "explain": "targetUserName = $USER1 on the 4624 logons."},
+    {"id": "antiforensic", "type": "choice", "weight": 2,
+     "prompt": "Which event signals the attacker covering tracks?",
+     "options": ["1102 — security audit log cleared", "4624 — successful logon", "4740 — lockout", "4720 — user created"],
+     "answer": "1102 — security audit log cleared",
+     "explain": "Event ID 1102 = the security log was cleared, a classic defense-evasion / anti-forensics step."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1021 Remote Services (lateral movement)", "T1070.001 Clear Windows Event Logs", "T1486 Data Encrypted for Impact", "T1558.003 Kerberoasting"],
+     "answer": ["T1021 Remote Services (lateral movement)", "T1070.001 Clear Windows Event Logs"],
+     "explain": "T1021 for the network logons, T1070.001 for the 1102 log wipe."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended actions (select all that apply):",
+     "options": ["Isolate both the source and destination hosts", "Reset $USER1 and any credentials used", "Pull logs from a central collector (not just the wiped host)", "Trust the local event log as complete", "Ignore — logs clear themselves sometimes"],
+     "answer": ["Isolate both the source and destination hosts", "Reset $USER1 and any credentials used", "Pull logs from a central collector (not just the wiped host)"],
+     "explain": "The local log is now untrustworthy — pivot to forwarded/SIEM copies, isolate both ends, and rotate the abused account."}
+  ]
+}

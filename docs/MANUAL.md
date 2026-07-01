@@ -472,8 +472,10 @@ answer and a rationale, and offers another drill at the same level.*
 
 ## 10. Scenario catalogue
 
-Two drills per level; the tool serves a random one at the chosen level. Titles
-are **hidden** from the trainee (shown only at debrief).
+The tool serves a random drill at the chosen level. Titles are **hidden** from
+the trainee (shown only at debrief).
+
+### Linux / web (stock Wazuh rules 5710/5716/31106)
 
 | File | Level | Teaches |
 |------|-------|---------|
@@ -484,7 +486,32 @@ are **hidden** from the trainee (shown only at debrief).
 | `03-multistage-intrusion.json` | advanced | separating actors, kill-chain progression, prioritisation |
 | `06-web-rce-attempt.json` | advanced | command injection / RCE, 200 = possible compromise, IR response |
 
-All ride the verified ssh (5710/5716) + web (31106) templates.
+### Windows / Sysmon (custom training rules 100100–100161)
+
+These inject Windows **EventChannel** JSON (Security + Sysmon) and only land on
+Windows hosts in the fleet (`os=windows-*` in `TRAIN_AGENTS`). They require the
+`training_rules.xml` pack (installed by `bootstrap.sh`; see §11).
+
+| File | Level | Event(s) | Teaches |
+|------|-------|----------|---------|
+| `07-win-rdp-bruteforce.json` | beginner | 4625 type 10 | RDP brute force, T1110.001, take RDP off the internet |
+| `08-win-account-lockout.json` | beginner | 4625 → 4740 | single-account guessing + lockout, targeted vs typo |
+| `09-win-password-spray-dc.json` | intermediate | 4625 (many users) | spray shape (many users / few tries), hunt the one success, T1110.003 |
+| `10-win-kerberoasting.json` | intermediate | 4769 RC4 (0x17) | Kerberoasting, RC4 tell, rotate SPN accounts, T1558.003 |
+| `11-win-powershell-cradle.json` | intermediate | Sysmon 1 | encoded PowerShell download cradle, T1059.001 |
+| `12-win-lolbin-exec.json` | intermediate | Sysmon 1 | LOLBin abuse from Office (rundll32/regsvr32/mshta/certutil), T1218 |
+| `13-win-rogue-admin.json` | intermediate | 4720 + 4732 | new privileged account persistence/escalation, T1136.002 / T1098 |
+| `14-win-asrep-roasting.json` | advanced | 4768 preauth 0 | AS-REP roasting, preauth-disabled misconfig, T1558.004 |
+| `15-win-cred-dump-lsass.json` | advanced | Sysmon 1 | LSASS dump via comsvcs MiniDump, T1003.001, assume creds stolen |
+| `16-win-ransomware-preencryption.json` | advanced | Sysmon 1 + 11 | shadow-copy delete + mass file rewrite, T1486 / T1490, act fast |
+| `17-win-c2-beacon.json` | advanced | Sysmon 3 | periodic C2 beacon to one IP, T1071.001 |
+| `18-win-lateral-log-cleared.json` | advanced | 4624 type 3 + 1102 | lateral movement + log wipe / anti-forensics, T1021 / T1070.001 |
+
+> **Why custom rules?** Stock Wazuh 60000-range Windows rules gate on an internal
+> `windows_eventchannel` decoder that only a real agent's logcollector reaches;
+> queue-socket-injected events are decoded by the generic `json` decoder. The
+> `training_rules.xml` pack keys on `decoded_as json` + the same `win.*` fields,
+> so injected Windows telemetry alerts identically. See §11.
 
 ---
 
