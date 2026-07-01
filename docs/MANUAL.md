@@ -325,7 +325,7 @@ AUTH_PORT=1515
 FLEET_FILE=fleet.txt
 KEYS_OUT=/opt/wazuh-soc-training/lab/agent_sim.keys
 EOF
-sudo bash enroll-fleet.sh           # prints TRAIN_AGENTS=001:web01,...
+sudo bash enroll-fleet.sh           # prints TRAIN_AGENTS=001:web01:linux,003:dc01:windows-server,...
 ```
 
 > **Enrollment uses IP `any` on purpose.** The simulator connects from
@@ -845,6 +845,18 @@ trainee → GET /scenario?difficulty=beginner
 trainee → POST /submit  → scoring.grade(RUN_STORE[run_id], answers)
            record() → attempts table → debrief + leaderboard
 ```
+
+---
+
+## 17. License
+
+**PolyForm Noncommercial License 1.0.0** (see [`LICENSE`](../LICENSE)) — © CisoDiagonal.
+
+Noncommercial use only: personal, research, educational, government, and nonprofit
+use is permitted, including modifying and sharing. **Commercial use is not
+permitted** — you may not sell the software, sell access to it, bundle it into a
+paid product/service, or otherwise use it for commercial advantage. For a
+commercial license, contact the author.
 
 ---
 

@@ -24,6 +24,12 @@ Because the alerts are real Wazuh alerts, everything the analyst learns —
 Discover queries, `rule.groups`, `data.srcip` pivots, agent correlation — is
 transferable to the job.
 
+Drills span a **mixed estate**: Linux/web hosts (SSH brute force, web attacks)
+**and** Windows/Active-Directory hosts (RDP brute force, Kerberoasting, AS-REP
+roasting, PowerShell cradles, LOLBins, LSASS dumping, ransomware precursors, C2
+beaconing, lateral movement + log wiping). Windows hosts show a real **Windows OS
+identity** in the dashboard, and Windows drills only land on Windows agents.
+
 Pure Python 3 **stdlib**. No pip, no Node, no external services.
 
 ## How it works
@@ -47,20 +53,43 @@ The injector **must run on the Wazuh manager** — the queue socket
 
 ## Verified rule coverage
 
-Scenarios only use event templates confirmed to fire on a live manager **and**
-to carry `data.srcip` (so the source shows up in triage and on an attack map):
+**Linux / web** scenarios use event templates confirmed to fire on a live manager
+**and** to carry `data.srcip` (so the source shows up in triage and on an attack
+map):
 
 | Template | Fires rule | Bucket |
 |----------|-----------|--------|
 | `sshd_invalid` / `sshd_failed` | 5710 / 5716 (`authentication_failed`) | brute force |
 | `web_sqli` / `web_xss` / `web_traversal` / `web_cmdinj` | 31106 (`web,accesslog,attack`, HTTP 200) | web attack |
 
-Adding new templates: verify with `wazuh-logtest` that the rule fires and
-`srcip` is decoded before wiring it into a scenario.
+**Windows / Sysmon** scenarios inject EventChannel JSON (Security + Sysmon) and
+fire a bundled custom rule pack, `rules/training_rules.xml` (IDs **100100–100161**,
+installed by `bootstrap.sh`):
+
+| Injected event | Fires rule | Covers |
+|----------------|-----------|--------|
+| 4625 (+ type 10 / freq) | 100110–100112 | brute force, password spray, RDP brute |
+| 4740 | 100113 | account lockout |
+| 4769 RC4 / 4768 preauth-0 | 100120 / 100121 | Kerberoasting / AS-REP roasting |
+| 4720 / 4728·4732 | 100130 / 100131 | rogue account + privileged-group add |
+| 1102 / 4624 type 3 | 100133 / 100134 | log clearing / lateral movement |
+| Sysmon 1 (command line) | 100141–100144 | encoded PowerShell, LOLBins, LSASS dump, shadow-copy delete |
+| Sysmon 3 / 11 (freq) | 100151 / 100161 | C2 beaconing / ransomware mass-encryption |
+
+> **Why a custom pack?** Stock Wazuh 60000-range Windows rules gate on an internal
+> `windows_eventchannel` decoder that only a real agent's logcollector reaches.
+> Queue-injected events decode via the generic `json` decoder, so the pack keys on
+> `decoded_as json` + the same `win.*` fields and alerts identically.
+
+Adding new templates: verify with `wazuh-logtest` that the rule fires (and, for
+network attacks, that `srcip` is decoded) before wiring it into a scenario.
 
 ## Scenarios
 
-Two drills per level; the tool serves a random one at the chosen level.
+18 drills across three levels; the tool serves a random one at the chosen level.
+Titles are hidden from the trainee (shown only at debrief).
+
+**Linux / web** (stock rules 5710/5716/31106):
 
 | File | Level | Teaches |
 |------|-------|---------|
@@ -70,6 +99,23 @@ Two drills per level; the tool serves a random one at the chosen level.
 | `scenarios/05-ssh-password-spray.json` | intermediate | spray vs brute force, T1110.003, MFA/lockout response |
 | `scenarios/03-multistage-intrusion.json` | advanced | separating actors, kill-chain progression, prioritisation |
 | `scenarios/06-web-rce-attempt.json` | advanced | command injection / RCE, 200 = possible compromise, IR response |
+
+**Windows / Sysmon** (custom pack 100100–100161, Windows agents only):
+
+| File | Level | Event(s) | Teaches |
+|------|-------|----------|---------|
+| `scenarios/07-win-rdp-bruteforce.json` | beginner | 4625 type 10 | RDP brute force, T1110.001 |
+| `scenarios/08-win-account-lockout.json` | beginner | 4625 → 4740 | single-account guessing + lockout |
+| `scenarios/09-win-password-spray-dc.json` | intermediate | 4625 (many users) | spray shape, hunt the one success, T1110.003 |
+| `scenarios/10-win-kerberoasting.json` | intermediate | 4769 RC4 | Kerberoasting, RC4 tell, T1558.003 |
+| `scenarios/11-win-powershell-cradle.json` | intermediate | Sysmon 1 | encoded PowerShell download cradle, T1059.001 |
+| `scenarios/12-win-lolbin-exec.json` | intermediate | Sysmon 1 | LOLBin abuse, T1218 |
+| `scenarios/13-win-rogue-admin.json` | intermediate | 4720 + 4732 | rogue privileged account, T1136.002 / T1098 |
+| `scenarios/14-win-asrep-roasting.json` | advanced | 4768 preauth 0 | AS-REP roasting, T1558.004 |
+| `scenarios/15-win-cred-dump-lsass.json` | advanced | Sysmon 1 | LSASS dump via comsvcs, T1003.001 |
+| `scenarios/16-win-ransomware-preencryption.json` | advanced | Sysmon 1 + 11 | shadow-copy delete + mass rewrite, T1486 / T1490 |
+| `scenarios/17-win-c2-beacon.json` | advanced | Sysmon 3 | periodic C2 beacon, T1071.001 |
+| `scenarios/18-win-lateral-log-cleared.json` | advanced | 4624 type 3 + 1102 | lateral movement + log wipe, T1021 / T1070.001 |
 
 A scenario is one JSON file: `briefing`, `dashboard_hint`, `inject.steps`
 (template + agent + srcips + count/pacing), `ground_truth`, `questions`
@@ -82,16 +128,22 @@ Drop a new file in `scenarios/` and restart — no code change.
 
 ```json
 "randomize": {
-    "ips":     {"SRC1": "bruteforce", "SRC2": "bruteforce"},
-    "targets": {"TARGET": {"question": "target"}}
+    "ips":      {"SRC1": "bruteforce", "SRC2": "bruteforce"},
+    "users":    {"USER1": true},
+    "services": {"SVC1": true},
+    "targets":  {"TARGET": {"question": "target", "os": "windows"}}
 }
 ```
 
 Referenced as `$TOKENS` anywhere in the scenario. `ips` draws distinct IPs from a
-named pool; `targets` draws distinct hosts from the live fleet and rebuilds the
-named choice question's options (correct host + random decoys). Step `count` may
-be an `[min, max]` range. Grading constants (attack class, MITRE id, severity)
-are **not** randomised — they are the learning objective. The materialised run is
+named pool; `users` / `services` draw account and SPN/service names (for
+AD-flavoured Windows drills); `targets` draws distinct hosts from the live fleet
+and rebuilds the named choice question's options (correct host + random decoys).
+An optional `"os"` filter on a target (`windows` / `linux`) restricts the draw —
+and its decoys — to that OS family, so a Windows drill only lands on a Windows
+host and never offers a Linux decoy as an answer. Step `count` may be an
+`[min, max]` range. Grading constants (attack class, MITRE id, severity) are
+**not** randomised — they are the learning objective. The materialised run is
 stored per `run_id` so grading uses the exact key that was injected.
 
 ## Run
@@ -123,8 +175,13 @@ throwaway VM? `vagrant up` boots one and runs the same bootstrap inside it.
 How the DB-only fleet works: `lab/enroll-fleet.sh` registers each agent via authd
 (:1515); `lab/agent_sim.py` speaks Wazuh's encrypted 1514 protocol to send
 keepalives so they show **Active** with no real endpoint; the queue-socket
-injector feeds their alerts. Full runbook + manual stages + the optional
-*real-agent container* path: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+injector feeds their alerts. Each fleet line carries an **`os`** column
+(`linux | windows-server | windows-10 | windows-11`) — the simulator reports it in
+the keepalive so Windows hosts (dc01, ws01, fs01…) show a real **Windows OS** in
+the dashboard, and `TRAIN_AGENTS` (`id:name:os`) tells the tool which drills each
+host can run. A realistic mixed AD + Linux DMZ estate ships in
+`lab/fleet.example.txt`. Full runbook + manual stages + the optional *real-agent
+container* path: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ## Routes
 
@@ -148,3 +205,13 @@ injector feeds their alerts. Full runbook + manual stages + the optional
   the alert pipeline.
 
 Status: proof-of-concept, provided as-is.
+
+## License
+
+**[PolyForm Noncommercial License 1.0.0](LICENSE)** — © CisoDiagonal.
+
+You may use, copy, modify, and share this software **for noncommercial purposes
+only**. Personal, research, educational, government, and other nonprofit use is
+permitted. **Commercial use is not permitted** — including selling the software,
+selling access to it, using it in a paid product or service, or otherwise using it
+for commercial advantage. For a commercial license, contact the author.
