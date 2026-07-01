@@ -97,8 +97,16 @@ _runs_lock = threading.Lock()
 
 
 def run_state(run_id):
+    """Return progress for an exact run id, or the latest run of a scenario id."""
     with _runs_lock:
-        return dict(_runs.get(run_id, {}))
+        if run_id in _runs:
+            return dict(_runs[run_id])
+        # fall back: treat as a scenario id -> most recent run for it
+        matches = [(v.get("started", 0), v) for v in _runs.values()
+                   if v.get("scenario") == run_id]
+        if matches:
+            return dict(max(matches, key=lambda m: m[0])[1])
+        return {}
 
 
 def _emit_scenario(run_id, scenario, agents):
