@@ -1,7 +1,7 @@
 # Virtual endpoint = one Wazuh agent in a container.
 # Enrolls to a REAL Wazuh manager on start, then shows up as a live agent
 # in the real dashboard. Agent version must be <= manager version.
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 ARG WAZUH_VERSION=4.14.5
 ENV DEBIAN_FRONTEND=noninteractive
