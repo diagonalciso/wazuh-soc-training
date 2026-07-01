@@ -1,0 +1,14 @@
+# secrets / local
+.env
+*.env
+!*.env.example
+# runtime data
+*.db
+*.db-wal
+*.db-shm
+*.log
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/

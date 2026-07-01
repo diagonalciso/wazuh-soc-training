@@ -1,0 +1,53 @@
+{
+  "id": "multistage-intrusion",
+  "title": "Multi-Stage Intrusion",
+  "difficulty": "advanced",
+  "duration_min": 20,
+  "briefing": "Two hosts are lighting up within the same window. One external actor appears to move from web probing into credential attacks, while a second, unrelated source hits a different service. Reconstruct the timeline, separate the two actors, and decide which is the higher priority.",
+  "dashboard_hint": "Widen the time range and sort by @timestamp. Correlate data.srcip against agent.name across both rule.groups: web and authentication_failed. Watch for one IP appearing in BOTH web and SSH alerts — that's your primary actor.",
+  "inject": {
+    "steps": [
+      {"template": "web_sqli",      "agent": "app01", "srcips": ["185.220.101.42"], "count": 4, "spacing": [1.0, 3.0]},
+      {"template": "web_traversal", "agent": "app01", "srcips": ["185.220.101.42"], "count": 3, "spacing": [1.5, 3.5]},
+      {"template": "sshd_invalid",  "agent": "app01", "srcips": ["185.220.101.42"], "count": 7, "spacing": [0.6, 2.0]},
+      {"template": "sshd_failed",   "agent": "ws01",           "srcips": ["61.177.173.50"],  "count": 8, "spacing": [0.6, 2.2]}
+    ]
+  },
+  "ground_truth": {
+    "primary_actor": "185.220.101.42",
+    "target": "app01",
+    "mitre": "T1190",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "actors", "type": "ipset", "weight": 2,
+     "prompt": "List every attacking source IP you can identify (comma-separated).",
+     "answer": ["185.220.101.42", "61.177.173.50"],
+     "explain": "185.220.101.42 hits web + SSH on app01; 61.177.173.50 brute-forces SSH on ws01."},
+    {"id": "primary", "type": "choice", "weight": 2,
+     "prompt": "Which source is the PRIMARY (higher-priority) actor and why?",
+     "options": ["185.220.101.42 — moved from web exploitation to credential attack on the same host (kill-chain progression)", "61.177.173.50 — more SSH failures overall", "Both are equal", "Neither is notable"],
+     "answer": "185.220.101.42 — moved from web exploitation to credential attack on the same host (kill-chain progression)",
+     "explain": "One actor progressing web -> auth on the same target shows intent and chaining; a lone brute-force source is lower priority."},
+    {"id": "chain", "type": "multi", "weight": 2,
+     "prompt": "What stages did the primary actor perform on app01? (select all)",
+     "options": ["SQL injection", "Path traversal", "SSH credential attack", "Ransomware deployment", "Data exfiltration"],
+     "answer": ["SQL injection", "Path traversal", "SSH credential attack"],
+     "explain": "Web SQLi + traversal, then pivoted to SSH auth failures — all from 185.220.101.42 against app01."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Primary actor's main target host?",
+     "options": ["web01", "db01", "app01", "ws01"],
+     "answer": "app01",
+     "explain": "The chained web+SSH activity all lands on app01."},
+    {"id": "severity", "type": "choice", "weight": 1,
+     "prompt": "Severity for the primary actor's activity?",
+     "options": ["Low", "Medium", "High", "Critical"],
+     "answer": "Critical",
+     "explain": "Multi-stage, single-actor, chained exploitation against one host warrants critical handling."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Block both source IPs", "Isolate/snapshot app01 for IR", "Hunt for successful web exploitation + new SSH sessions", "Rotate credentials on the targeted host", "Only block the SSH source"],
+     "answer": ["Block both source IPs", "Isolate/snapshot app01 for IR", "Hunt for successful web exploitation + new SSH sessions", "Rotate credentials on the targeted host"],
+     "explain": "Treat app01 as possibly compromised: block, isolate/snapshot, hunt for success, rotate creds. Blocking only the SSH source misses the primary actor."}
+  ]
+}

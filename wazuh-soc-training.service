@@ -1,0 +1,20 @@
+[Unit]
+Description=wazuh-soc-training — SOC analyst drill platform
+After=network.target wazuh-manager.service
+Wants=wazuh-manager.service
+
+[Service]
+Type=simple
+# must reach the analysisd queue socket (owned wazuh:wazuh)
+User=root
+WorkingDirectory=/opt/wazuh-soc-training
+EnvironmentFile=/etc/wazuh-soc-training.env
+ExecStart=/usr/bin/python3 /opt/wazuh-soc-training/app.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
