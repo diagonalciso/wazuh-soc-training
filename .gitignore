@@ -2,6 +2,8 @@
 .env
 *.env
 !*.env.example
+# lab: real topology / local fleet (keep the .example)
+lab/fleet.txt
 # runtime data
 *.db
 *.db-wal

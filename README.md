@@ -77,7 +77,29 @@ sudo env $(grep -v '^#' /etc/wazuh-soc-training.env | xargs) python3 app.py
 ```
 
 Needs write access to the queue socket → run as `root` or the `wazuh` user. See
-[docs/ADMIN.md](docs/ADMIN.md) and [docs/INSTALL.md](docs/INSTALL.md).
+[docs/ADMIN.md](docs/ADMIN.md) for operations.
+
+## Full lab from scratch
+
+The **only real thing you install by hand is one Wazuh all-in-one server**. The
+rest — a fleet of endpoints, their agents, the network, and the attacks — is
+scripted. See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the end-to-end runbook.
+
+```bash
+# 1. install the real Wazuh AIO server (VM / bare metal) — see DEPLOY.md stage 1
+# 2. stand up virtual endpoints (Wazuh agents in containers) that enroll to it:
+cd lab
+cp lab.env.example lab.env        # MANAGER_IP, ENROLL_PASSWORD, WAZUH_VERSION
+cp fleet.example.txt fleet.txt    # web01/db01/dc01/ws01... names, ips, roles
+./deploy-lab.sh                   # builds agent image + starts the fleet
+# 3. install this tool on the manager, wire TRAIN_AGENTS to the real agent ids:
+cd .. && ./deploy.sh <user>@<server-ip>
+lab/agents-to-trainenv.sh <user>@<server-ip>   # prints TRAIN_AGENTS=001:web01,...
+```
+
+`lab/` contents: `agent.Dockerfile` + `entrypoint.sh` (a virtual endpoint),
+`deploy-lab.sh` / `teardown-lab.sh` (fleet up/down), `agents-to-trainenv.sh`
+(map real agent ids into the tool's env).
 
 ## Routes
 

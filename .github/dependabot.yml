@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # GitHub Actions used by CI
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  # Base image for the virtual-endpoint agent container
+  - package-ecosystem: "docker"
+    directory: "/lab"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+
+  # Python deps (stdlib-only today; catches anything added later)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"

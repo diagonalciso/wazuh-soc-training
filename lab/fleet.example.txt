@@ -1,0 +1,16 @@
+# Virtual endpoint fleet. One line per endpoint:
+#   name    ip              role        group
+# name  = agent name shown in Wazuh + container hostname
+# ip    = static IP on the lab docker network (must be inside LAB_SUBNET)
+# role  = free label (used in training scenarios / your own notes)
+# group = Wazuh agent group (optional; must exist on manager or use "default")
+#
+# Edit to taste. These map to TRAIN_AGENTS in the training tool.
+web01        172.30.0.11     web          default
+web02        172.30.0.12     web          default
+app01        172.30.0.13     app          default
+db01         172.30.0.14     database     default
+dc01         172.30.0.15     domain-ctrl  default
+jump01       172.30.0.16     bastion      default
+ws01         172.30.0.21     workstation  default
+ws02         172.30.0.22     workstation  default

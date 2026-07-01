@@ -13,6 +13,8 @@ scp scenarios/*.json "$TARGET":/tmp/wst-stage/scenarios/
 scp docs/ADMIN.md "$TARGET":/tmp/wst-stage/docs/ 2>/dev/null || true
 
 echo "[*] installing to $APP (sudo)"
+# APP is a fixed constant; intentional client-side expansion.
+# shellcheck disable=SC2029
 ssh "$TARGET" "sudo mkdir -p $APP && sudo cp -r /tmp/wst-stage/* $APP/ && \
   ( [ -f /etc/wazuh-soc-training.env ] || sudo cp $APP/wazuh-soc-training.env.example /etc/wazuh-soc-training.env ) && \
   sudo chmod 600 /etc/wazuh-soc-training.env && \
