@@ -203,7 +203,7 @@
   <!-- Shadow-copy deletion (ransomware precursor). -->
   <rule id="100144" level="10">
     <if_sid>100140</if_sid>
-    <field name="win.eventdata.commandLine">vssadmin.*delete.*shadow|wmic.*shadowcopy.*delete|bcdedit.*recoveryenabled.*no</field>
+    <field name="win.eventdata.commandLine">delete shadows|shadowcopy delete|resize shadowstorage|recoveryenabled no|delete catalog</field>
     <description>Training: Shadow copy deletion on $(win.system.computer) (ransomware precursor)</description>
     <group>sysmon,training_win_ransomware,</group>
     <mitre><id>T1490</id></mitre>
