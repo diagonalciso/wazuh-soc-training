@@ -333,7 +333,7 @@ All config is environment-driven (`config.py`). Live file:
 | `TRAIN_PORT` | `8101` | Web UI port. |
 | `TRAIN_BIND` | `0.0.0.0` | Bind address. Use an internal IP to restrict exposure. |
 | `TRAIN_DB` | `<install>/training.db` | SQLite leaderboard/attempts DB. |
-| `TRAIN_AGENTS` | `001:web01,003:db01,...` | **Real** agent IDs↔names on this manager. Scenarios target these; names are shown to the trainee. Produced by `enroll-fleet.sh`. |
+| `TRAIN_AGENTS` | `001:web01,002:db01,003:dc01,...` | **Real** agent IDs↔names on this manager. Scenarios target these; names are shown to the trainee. Produced by `enroll-fleet.sh`. |
 | `SCENARIO_DIR` | `<install>/scenarios` | Scenario JSON directory. |
 | `INDEXER_URL` | `https://127.0.0.1:9200` | Read-only, only used if you extend the tool to verify landed events. |
 | `INDEXER_USER` / `INDEXER_PASS` | `monitor` / — | Read-only indexer account (create in Wazuh if you use verification). |
