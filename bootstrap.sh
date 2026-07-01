@@ -59,6 +59,19 @@ mkdir -p "$INSTALL_DIR"
 cp -r "$REPO_DIR"/. "$INSTALL_DIR"/
 find "$INSTALL_DIR" -name '*.db' -delete 2>/dev/null || true
 
+# --------------------------------------------------- 2b. custom detection rules
+# The Windows/Sysmon scenarios rely on training_rules.xml (see the file header
+# for why the stock 60000-range rules can't fire on injected events).
+if [ -f "$INSTALL_DIR/rules/training_rules.xml" ] && [ -d /var/ossec/etc/rules ]; then
+  log "installing training detection rules"
+  cp "$INSTALL_DIR/rules/training_rules.xml" /var/ossec/etc/rules/training_rules.xml
+  chown wazuh:wazuh /var/ossec/etc/rules/training_rules.xml 2>/dev/null || true
+  chmod 660 /var/ossec/etc/rules/training_rules.xml
+  log "restarting wazuh-manager to load rules"
+  systemctl restart wazuh-manager || die "manager failed to restart (bad rules?)"
+  sleep 5
+fi
+
 # ---------------------------------------------------------------- 3. fleet + sim
 TRAIN_AGENTS=""
 if [ "${SKIP_FLEET:-0}" != 1 ]; then
@@ -70,9 +83,12 @@ MANAGER_IP=127.0.0.1
 AUTH_PORT=1515
 FLEET_FILE=fleet.txt
 KEYS_OUT=$INSTALL_DIR/lab/agent_sim.keys
+OSMAP_OUT=$INSTALL_DIR/lab/agent_sim.osmap
 EOF
   # authd add-mode enrollment must be reachable; manager must be running.
   TRAIN_AGENTS="$(bash enroll-fleet.sh | awk -F= '/^ *TRAIN_AGENTS=/{print $2}')" || true
+  # osmap is not secret but must be world-readable for the DynamicUser service.
+  [ -f "$INSTALL_DIR/lab/agent_sim.osmap" ] && chmod 644 "$INSTALL_DIR/lab/agent_sim.osmap"
 
   install -m644 wazuh-agent-sim.service /etc/systemd/system/wazuh-agent-sim.service
   systemctl daemon-reload

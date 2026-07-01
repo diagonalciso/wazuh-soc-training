@@ -293,7 +293,7 @@ class Handler(BaseHTTPRequestHandler):
             template = SCENARIOS.get(sid) if sid else pick_scenario(difficulty)
             if not template:
                 return self._redirect("/")
-            sc = randomizer.materialize(template, config.AGENTS)
+            sc = randomizer.materialize(template, config.AGENTS, config.AGENT_OS)
             run_id = injector.launch(sc, config.AGENTS)
             _store_run(run_id, sc)
             return self._send(200, view_scenario(sc, trainee, run_id))

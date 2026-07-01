@@ -47,7 +47,21 @@ IP_POOLS = {
         "71.6.199.23", "198.20.69.74", "66.240.205.34", "184.105.247.195",
         "185.142.236.35", "162.142.125.12", "167.94.138.44", "206.168.34.9",
     ],
+    # External C2 / exfil endpoints for Sysmon network beacons.
+    "c2": [
+        "185.220.101.42", "45.9.148.3", "193.106.191.20", "5.188.206.18",
+        "91.219.236.166", "23.106.223.44", "146.70.199.11",
+        "194.165.16.9", "212.192.246.30", "179.43.187.100",
+    ],
 }
+
+# Windows account pools for AD-flavoured scenarios (kerberoast targets, rogue
+# admins, spray victims). Distinct per token like the IP pools.
+USER_POOL = ["administrator", "jsmith", "adunn", "mwallace", "kperry",
+             "operator", "helpdesk", "sqladmin", "backup_adm", "rsmith",
+             "tgordon", "lchen", "pnovak", "svc_task", "hr_admin"]
+SVC_POOL = ["svc_sql", "svc_web", "MSSQLSvc", "svc_backup", "svc_share",
+            "svc_ldap", "svc_report", "http_svc", "svc_jenkins", "svc_vc"]
 
 _TOKEN = re.compile(r"\$([A-Z][A-Z0-9_]*)")
 
@@ -72,11 +86,21 @@ def _pick_distinct(pool, n, exclude):
     return choices[:n]
 
 
-def materialize(template, agents):
+def _os_family(os_key):
+    """Collapse windows-server/-10/-11 -> 'windows'; anything else -> 'linux'."""
+    return "windows" if str(os_key).startswith("windows") else "linux"
+
+
+def materialize(template, agents, agent_os=None):
     """Return a concrete scenario dict for one run (template is left untouched).
 
     `agents` is the {name: id} fleet map used to draw target hosts + decoys.
+    `agent_os` is an optional {name: os_key} map; when a target token declares
+    an "os" filter (e.g. "windows"), only matching hosts are drawn — so a
+    Kerberoasting drill lands on a Windows DC, not a Linux web box. Decoys for
+    that question are drawn from the same OS family so they stay plausible.
     """
+    agent_os = agent_os or {}
     sc = copy.deepcopy(template)
     rz = sc.get("randomize")
     if not rz:
@@ -90,16 +114,37 @@ def materialize(template, agents):
         used_ips.add(ip)
         mapping[token] = ip
 
-    host_names = list(agents.keys()) or ["host01", "host02", "host03", "host04"]
+    # Windows usernames: token -> distinct account from USER_POOL.
+    used_users = set()
+    for token in rz.get("users", {}):
+        u = _pick_distinct(USER_POOL, 1, used_users)[0]
+        used_users.add(u)
+        mapping[token] = u
+
+    # Kerberos/service accounts: token -> distinct service name.
+    used_svcs = set()
+    for token in rz.get("services", {}):
+        s = _pick_distinct(SVC_POOL, 1, used_svcs)[0]
+        used_svcs.add(s)
+        mapping[token] = s
+
+    all_hosts = list(agents.keys()) or ["host01", "host02", "host03", "host04"]
     used_hosts = set()
-    target_qs = {}                              # question_id -> chosen host
+    target_qs = {}                              # question_id -> (chosen host, os filter)
     for token, cfg in rz.get("targets", {}).items():
-        host = _pick_distinct(host_names, 1, used_hosts)[0]
+        want_os = cfg.get("os")                 # "windows" / "linux" / None
+        if want_os:
+            pool = [h for h in all_hosts if _os_family(agent_os.get(h)) == want_os]
+        else:
+            pool = all_hosts
+        if not pool:                            # requested OS absent -> fall back
+            pool = all_hosts
+        host = _pick_distinct(pool, 1, used_hosts)[0]
         used_hosts.add(host)
         mapping[token] = host
         qid = cfg.get("question")
         if qid:
-            target_qs[qid] = host
+            target_qs[qid] = (host, want_os)
 
     sc = _sub(sc, mapping)
 
@@ -112,8 +157,15 @@ def materialize(template, agents):
     # rebuild options for each target-bound choice question
     for q in sc.get("questions", []):
         if q.get("id") in target_qs:
-            correct = target_qs[q["id"]]
-            decoys = _pick_distinct([h for h in host_names if h != correct], 3, set())
+            correct, want_os = target_qs[q["id"]]
+            if want_os:                          # decoys from the same OS family
+                cand = [h for h in all_hosts
+                        if h != correct and _os_family(agent_os.get(h)) == want_os]
+            else:
+                cand = [h for h in all_hosts if h != correct]
+            if len(cand) < 3:                    # top up with any other host
+                cand += [h for h in all_hosts if h != correct and h not in cand]
+            decoys = _pick_distinct(cand, 3, set())
             opts = [correct] + decoys
             random.shuffle(opts)
             q["options"] = opts

@@ -1,18 +1,25 @@
 # Fleet of DB-only agents. One line per endpoint:
-#   name    ip              role         group
+#   name    ip              role          group     os
 # name  = agent name shown in Wazuh
 # ip    = registered agent IP (cosmetic in DB-only mode; shown in dashboard)
 # role  = free label (used in training scenarios / your own notes)
 # group = Wazuh agent group (must exist on manager, or use "default")
+# os    = agent OS identity shown in the dashboard, one of:
+#           linux | windows-server | windows-10 | windows-11
+#         The keepalive simulator reports this so Windows hosts (dc01, ws01...)
+#         show a real Windows OS instead of a blank/Linux one. Scenarios pick
+#         host-appropriate attacks (RDP/Kerberos on Windows, SSH on Linux).
 #
-# DB-only: these are registered via authd (enroll-fleet.sh) and kept ACTIVE by
-# the keepalive simulator (agent_sim.py). No containers or VMs are created.
-# They map to TRAIN_AGENTS in the training tool.
-web01        10.10.0.11      web          default
-web02        10.10.0.12      web          default
-app01        10.10.0.13      app          default
-db01         10.10.0.14      database     default
-dc01         10.10.0.15      domain-ctrl  default
-jump01       10.10.0.16      bastion      default
-ws01         10.10.0.21      workstation  default
-ws02         10.10.0.22      workstation  default
+# DB-only: registered via authd (enroll-fleet.sh), kept ACTIVE by agent_sim.py.
+# No containers or VMs are created. They map to TRAIN_AGENTS in the tool.
+#
+# Mixed estate below = a realistic small AD network + Linux DMZ.
+web01        10.10.0.11      nginx-web       default   linux
+web02        10.10.0.12      nginx-web       default   linux
+app01        10.10.0.13      app-tomcat      default   linux
+db01         10.10.0.14      postgres-db     default   linux
+jump01       10.10.0.15      ssh-bastion     default   linux
+dc01         10.10.0.21      domain-ctrl     default   windows-server
+fs01         10.10.0.22      file-server     default   windows-server
+ws01         10.10.0.31      workstation     default   windows-10
+ws02         10.10.0.32      workstation     default   windows-11

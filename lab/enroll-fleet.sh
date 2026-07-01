@@ -21,12 +21,14 @@ MANAGER_IP="${MANAGER_IP:-127.0.0.1}"
 AUTH_PORT="${AUTH_PORT:-1515}"
 FLEET_FILE="${FLEET_FILE:-fleet.txt}"
 KEYS_OUT="${KEYS_OUT:-agent_sim.keys}"
+OSMAP_OUT="${OSMAP_OUT:-agent_sim.osmap}"   # name -> os_key, for agent_sim.py
 AUTHD_PASS="${AUTHD_PASS:-}"        # set only if manager uses authd password
 
 command -v openssl >/dev/null || { echo "openssl required" >&2; exit 1; }
 [ -f "$FLEET_FILE" ] || { echo "fleet file '$FLEET_FILE' not found (copy fleet.example.txt)" >&2; exit 1; }
 
 : > "$KEYS_OUT"
+: > "$OSMAP_OUT"
 train_agents=""
 
 enroll() {
@@ -43,9 +45,10 @@ enroll() {
   printf "%s" "$resp"
 }
 
-while read -r name ip role group _rest; do
+while read -r name ip role group os _rest; do
   case "$name" in ''|\#*) continue ;; esac
   group="${group:-default}"
+  os="${os:-linux}"
   # These are DB-only simulated agents: agent_sim.py connects to remoted from the
   # manager host itself (127.0.0.1), NOT from the cosmetic fleet IP in fleet.txt.
   # If we register a fixed IP, remoted rejects every keepalive with
@@ -62,8 +65,9 @@ while read -r name ip role group _rest; do
   fi
   id="${key_body%% *}"
   echo "$key_body" >> "$KEYS_OUT"
-  train_agents="${train_agents:+$train_agents,}${id}:${name}"
-  echo "[+] enrolled $name (role=$role) -> id $id"
+  echo "${name} ${os}" >> "$OSMAP_OUT"
+  train_agents="${train_agents:+$train_agents,}${id}:${name}:${os}"
+  echo "[+] enrolled $name (role=$role, os=$os) -> id $id"
 done < "$FLEET_FILE"
 
 chmod 600 "$KEYS_OUT"

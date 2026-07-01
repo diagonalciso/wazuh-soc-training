@@ -12,9 +12,12 @@ WorkingDirectory=/opt/wazuh-soc-training/lab
 # via %d (=$CREDENTIALS_DIRECTORY) so it stays unreadable to everyone else and
 # still works under DynamicUser (random uid can't open a root-owned 0600 file).
 LoadCredential=agent_sim_keys:/opt/wazuh-soc-training/lab/agent_sim.keys
+# The osmap (name -> OS identity) is not secret; pass its path directly. It must
+# be world-readable so DynamicUser can open it.
 ExecStart=/usr/bin/python3 /opt/wazuh-soc-training/lab/agent_sim.py \
   --manager ${MANAGER_IP} --port ${MANAGER_PORT} \
-  --interval ${KEEPALIVE_INTERVAL} --keys %d/agent_sim_keys
+  --interval ${KEEPALIVE_INTERVAL} --keys %d/agent_sim_keys \
+  --osmap /opt/wazuh-soc-training/lab/agent_sim.osmap
 Environment=MANAGER_IP=127.0.0.1
 Environment=MANAGER_PORT=1514
 Environment=KEEPALIVE_INTERVAL=30

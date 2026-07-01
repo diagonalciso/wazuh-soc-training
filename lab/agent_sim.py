@@ -58,19 +58,38 @@ def build_frame(agent_id: str, key_hex: str, body: str,
     return struct.pack("<I", len(wire)) + wire
 
 
-def keepalive_body(name: str) -> str:
+# Per-OS agent-info strings. remoted/wazuh-db parses the bracketed
+# [os_name|os_platform:codename|os_version] to set the agent OS shown in the
+# dashboard. os_platform "windows" gives the agent a Windows identity/icon.
+OS_TEMPLATES = {
+    "linux":
+        "#!-Linux |%s |5.15.0-lab |#1 SMP lab |x86_64 "
+        "[Ubuntu|ubuntu:|22.04.4 LTS] - Wazuh v4.14.5 / lab-sim",
+    "windows-server":
+        "#!-Microsoft Windows Server 2019 Datacenter |%s |10.0.17763.107 "
+        "|(WinNT) |x86_64 [Microsoft Windows Server 2019 Datacenter|windows:|"
+        "10.0.17763.107] - Wazuh v4.14.5 / lab-sim",
+    "windows-10":
+        "#!-Microsoft Windows 10 Pro |%s |10.0.19045.4291 |(WinNT) |x86_64 "
+        "[Microsoft Windows 10 Pro|windows:|10.0.19045.4291] - Wazuh v4.14.5 / lab-sim",
+    "windows-11":
+        "#!-Microsoft Windows 11 Enterprise |%s |10.0.22631.3593 |(WinNT) |x86_64 "
+        "[Microsoft Windows 11 Enterprise|windows:|10.0.22631.3593] - Wazuh v4.14.5 / lab-sim",
+}
+
+
+def keepalive_body(name: str, os_key: str = "linux") -> str:
     # A control message that is NOT "#!-agent startup/shutdown/ack" is treated
     # by remoted as a keepalive -> updates last_keepalive -> agent goes Active.
-    return ("#!-Linux |%s |5.15.0-lab |#1 SMP lab |x86_64 "
-            "[Ubuntu|ubuntu:|22.04.4 LTS] - Wazuh v4.14.5 / lab-sim\n"
-            "lab000000000000000000000000000000 merged.mg\n" % name)
+    tmpl = OS_TEMPLATES.get(os_key, OS_TEMPLATES["linux"])
+    return (tmpl % name) + "\nlab000000000000000000000000000000 merged.mg\n"
 
 
 def startup_body() -> str:
     return "#!-agent startup {\"version\":\"Wazuh v4.14.5\"}"
 
 
-def run_agent(agent_id, name, raw_key, manager, port, interval, stop):
+def run_agent(agent_id, name, raw_key, manager, port, interval, stop, os_key="linux"):
     key_hex = aes_key_hex(raw_key)
     gcount = int(time.time()) & 0xFFFFFFFF
     lcount = 0
@@ -92,7 +111,7 @@ def run_agent(agent_id, name, raw_key, manager, port, interval, stop):
         print("[%s/%s] startup sent" % (agent_id, name), flush=True)
         while not stop.is_set():
             try:
-                send(keepalive_body(name))
+                send(keepalive_body(name, os_key))
                 print("[%s/%s] keepalive g=%u l=%u" % (agent_id, name, gcount, lcount),
                       flush=True)
             except (BrokenPipeError, ConnectionResetError, OSError) as e:
@@ -124,12 +143,28 @@ def parse_keys(path):
     return out
 
 
+def load_osmap(path):
+    """name -> os_key map (lines: '<name> <os_key>'). Missing -> linux."""
+    m = {}
+    try:
+        with open(path) as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) >= 2 and not parts[0].startswith("#"):
+                    m[parts[0]] = parts[1]
+    except OSError:
+        pass
+    return m
+
+
 def main():
     ap = argparse.ArgumentParser(description="Wazuh agent keepalive simulator")
     ap.add_argument("--manager", default=os.environ.get("MANAGER_IP", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("MANAGER_PORT", "1514")))
     ap.add_argument("--interval", type=int, default=int(os.environ.get("KEEPALIVE_INTERVAL", "30")))
     ap.add_argument("--keys", help="path to a client.keys file")
+    ap.add_argument("--osmap", default=os.environ.get("OSMAP_FILE"),
+                    help="path to a 'name os_key' map (windows-server/-10/-11/linux)")
     ap.add_argument("--agent", action="append", default=[],
                     help="id:name:rawkey (repeatable)")
     args = ap.parse_args()
@@ -143,13 +178,16 @@ def main():
     if not agents:
         ap.error("no agents (use --keys or --agent id:name:rawkey)")
 
+    osmap = load_osmap(args.osmap) if args.osmap else {}
+
     print("simulating %d agent(s) -> %s:%d every %ds"
           % (len(agents), args.manager, args.port, args.interval), flush=True)
     stop = threading.Event()
     threads = []
     for i, n, k in agents:
+        os_key = osmap.get(n, "linux")
         t = threading.Thread(target=run_agent,
-                             args=(i, n, k, args.manager, args.port, args.interval, stop),
+                             args=(i, n, k, args.manager, args.port, args.interval, stop, os_key),
                              daemon=True)
         t.start()
         threads.append(t)

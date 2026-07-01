@@ -1,0 +1,255 @@
+<!--
+  wazuh-soc-training — custom detection rules for injected lab telemetry.
+
+  WHY THIS FILE EXISTS
+  --------------------
+  Windows EventChannel / Sysmon events are normally decoded by an INTERNAL
+  compiled decoder in wazuh-analysisd (`windows_eventchannel`), fed by a
+  dedicated queue that only a real agent's logcollector reaches. Events we
+  inject into the analysisd queue socket are decoded by the generic `json`
+  decoder instead, so the stock 60000-range Windows rules (which gate on
+  `decoded_as windows_eventchannel`) never evaluate.
+
+  The generic `json` decoder DOES extract every `win.*` field, so we match on
+  those directly with our own rules. Verified in wazuh-logtest: each rule below
+  fires on the matching injected event and resolves dynamic fields (srcip,
+  usernames) into the alert.
+
+  ID range 100100-100199 is reserved for this training pack. Level values are
+  chosen so drills produce alert-worthy events (>=3) in the dashboard.
+
+  Install: copy to /var/ossec/etc/rules/training_rules.xml and restart
+  wazuh-manager (bootstrap.sh does this).
+-->
+<group name="training,">
+
+  <!-- ============================================================= base -->
+  <!-- Every injected Windows event decodes as json and carries a provider. -->
+  <rule id="100100" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="win.system.providerName">\.+</field>
+    <description>Training: Windows event (injected)</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ================================================= Windows Security -->
+
+  <!-- 4625 - failed logon. Covers brute force, password spray, RDP brute. -->
+  <rule id="100110" level="5">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4625$</field>
+    <description>Training: Windows logon failure (4625) for $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <group>authentication_failed,training_win_bruteforce,</group>
+    <mitre><id>T1110</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4625 with logonType 10 = RDP-specific failed logon. -->
+  <rule id="100111" level="6">
+    <if_sid>100110</if_sid>
+    <field name="win.eventdata.logonType">^10$</field>
+    <description>Training: RDP logon failure (4625/type10) for $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <group>authentication_failed,training_win_rdp,</group>
+    <mitre><id>T1110.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Correlation: many 4625 from one source in a window = brute/spray. -->
+  <rule id="100112" level="10" frequency="6" timeframe="120">
+    <if_matched_sid>100110</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <description>Training: Windows brute-force / password spray from $(win.eventdata.ipAddress)</description>
+    <group>authentication_failures,training_win_bruteforce,</group>
+    <mitre><id>T1110</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4740 - account locked out (consequence of spray/brute). -->
+  <rule id="100113" level="6">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4740$</field>
+    <description>Training: Windows account $(win.eventdata.targetUserName) locked out</description>
+    <group>authentication_failed,training_win_lockout,</group>
+    <mitre><id>T1110</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4769 - Kerberos service ticket. RC4 (0x17) = Kerberoasting indicator. -->
+  <rule id="100120" level="6">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4769$</field>
+    <field name="win.eventdata.ticketEncryptionType">^0x17$</field>
+    <description>Training: Kerberos RC4 service ticket for $(win.eventdata.serviceName) from $(win.eventdata.ipAddress) (possible Kerberoasting)</description>
+    <group>training_win_kerberoast,</group>
+    <mitre><id>T1558.003</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4768 - TGT request with pre-auth not required = AS-REP roasting. -->
+  <rule id="100121" level="7">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4768$</field>
+    <field name="win.eventdata.preAuthType">^0$</field>
+    <description>Training: Kerberos TGT with no pre-auth for $(win.eventdata.targetUserName) (AS-REP roasting)</description>
+    <group>training_win_asrep,</group>
+    <mitre><id>T1558.004</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4672 - special privileges assigned (admin/priv logon). -->
+  <rule id="100122" level="5">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4672$</field>
+    <description>Training: Special privileges assigned to $(win.eventdata.subjectUserName)</description>
+    <group>training_win_privuse,</group>
+    <mitre><id>T1078</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4720 - new user account created. -->
+  <rule id="100130" level="7">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4720$</field>
+    <description>Training: New Windows account created: $(win.eventdata.targetUserName)</description>
+    <group>training_win_persistence,account_changes,</group>
+    <mitre><id>T1136.002</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4728/4732 - member added to a security-enabled (admin) group. -->
+  <rule id="100131" level="8">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4728$|^4732$</field>
+    <description>Training: Member added to privileged group $(win.eventdata.targetUserName)</description>
+    <group>training_win_privesc,account_changes,</group>
+    <mitre><id>T1098</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 7045 - new service installed (persistence / tool drop). -->
+  <rule id="100132" level="7">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^7045$</field>
+    <description>Training: New Windows service installed: $(win.eventdata.serviceName) on $(win.system.computer)</description>
+    <group>training_win_service,</group>
+    <mitre><id>T1543.003</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 1102 - Windows audit log cleared (defense evasion). -->
+  <rule id="100133" level="9">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^1102$</field>
+    <description>Training: Windows Security audit log was cleared on $(win.system.computer)</description>
+    <group>training_win_evasion,</group>
+    <mitre><id>T1070.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4624 logonType 3 with explicit creds = lateral movement candidate. -->
+  <rule id="100134" level="6">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4624$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <description>Training: Network logon to $(win.system.computer) as $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <group>training_win_lateral,</group>
+    <mitre><id>T1021.002</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- =================================================== Sysmon (channel) -->
+
+  <!-- Sysmon EID 1 - process create (base for command-line detections). -->
+  <rule id="100140" level="3">
+    <if_sid>100100</if_sid>
+    <field name="win.system.providerName">Sysmon</field>
+    <field name="win.system.eventID">^1$</field>
+    <description>Training: Sysmon process create on $(win.system.computer): $(win.eventdata.image)</description>
+    <group>sysmon,sysmon_event1,training_win_proc,</group>
+    <mitre><id>T1059</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Encoded / hidden PowerShell. -->
+  <rule id="100141" level="8">
+    <if_sid>100140</if_sid>
+    <field name="win.eventdata.commandLine">-enc|-encodedcommand|-nop |-w hidden|hidden;|frombase64</field>
+    <description>Training: Suspicious encoded PowerShell on $(win.system.computer)</description>
+    <group>sysmon,powershell,training_win_powershell,</group>
+    <mitre><id>T1059.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- LOLBins spawning from office/script hosts. -->
+  <rule id="100142" level="8">
+    <if_sid>100140</if_sid>
+    <field name="win.eventdata.image">rundll32.exe|regsvr32.exe|mshta.exe|wmic.exe|certutil.exe</field>
+    <description>Training: LOLBin execution on $(win.system.computer): $(win.eventdata.image)</description>
+    <group>sysmon,training_win_lolbin,</group>
+    <mitre><id>T1218</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Credential dumping tools / LSASS access patterns. -->
+  <rule id="100143" level="10">
+    <if_sid>100140</if_sid>
+    <field name="win.eventdata.commandLine">sekurlsa|mimikatz|lsass|comsvcs.*MiniDump|procdump.*lsass</field>
+    <description>Training: Credential dumping attempt on $(win.system.computer)</description>
+    <group>sysmon,training_win_creddump,</group>
+    <mitre><id>T1003.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Shadow-copy deletion (ransomware precursor). -->
+  <rule id="100144" level="10">
+    <if_sid>100140</if_sid>
+    <field name="win.eventdata.commandLine">vssadmin.*delete.*shadow|wmic.*shadowcopy.*delete|bcdedit.*recoveryenabled.*no</field>
+    <description>Training: Shadow copy deletion on $(win.system.computer) (ransomware precursor)</description>
+    <group>sysmon,training_win_ransomware,</group>
+    <mitre><id>T1490</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Sysmon EID 3 - network connection to an external host (C2 beacon). -->
+  <rule id="100150" level="5">
+    <if_sid>100100</if_sid>
+    <field name="win.system.providerName">Sysmon</field>
+    <field name="win.system.eventID">^3$</field>
+    <description>Training: Sysmon network connection from $(win.system.computer) to $(win.eventdata.destinationIp)</description>
+    <group>sysmon,sysmon_event3,training_win_network,</group>
+    <mitre><id>T1071</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Repeated beacon-like connections to the same external IP. -->
+  <rule id="100151" level="9" frequency="5" timeframe="300">
+    <if_matched_sid>100150</if_matched_sid>
+    <same_field>win.eventdata.destinationIp</same_field>
+    <description>Training: Beaconing pattern from $(win.system.computer) to $(win.eventdata.destinationIp) (possible C2)</description>
+    <group>sysmon,training_win_c2,</group>
+    <mitre><id>T1071.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Sysmon EID 11 - file create (mass creation = ransomware encryption). -->
+  <rule id="100160" level="4">
+    <if_sid>100100</if_sid>
+    <field name="win.system.providerName">Sysmon</field>
+    <field name="win.system.eventID">^11$</field>
+    <description>Training: Sysmon file created on $(win.system.computer): $(win.eventdata.targetFilename)</description>
+    <group>sysmon,sysmon_event_11,training_win_file,</group>
+    <mitre><id>T1074</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- High-rate file creation on one host = encryption in progress. -->
+  <rule id="100161" level="11" frequency="12" timeframe="60">
+    <if_matched_sid>100160</if_matched_sid>
+    <same_field>win.system.computer</same_field>
+    <description>Training: Rapid file creation on $(win.system.computer) (ransomware encryption)</description>
+    <group>sysmon,training_win_ransomware,</group>
+    <mitre><id>T1486</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+</group>
