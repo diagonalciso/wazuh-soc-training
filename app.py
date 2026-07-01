@@ -19,9 +19,13 @@ import glob
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import random
+import threading
+
 import config
 import injector
 import scoring
+import randomizer
 
 # ---------------------------------------------------------------- scenarios
 
@@ -38,6 +42,38 @@ def load_scenarios():
 
 
 SCENARIOS = load_scenarios()
+
+# Difficulty levels a trainee can pick, in order, restricted to what exists.
+_LEVEL_ORDER = ["beginner", "intermediate", "advanced"]
+LEVELS = [d for d in _LEVEL_ORDER
+          if any(s.get("difficulty") == d for s in SCENARIOS.values())]
+
+# Materialised (randomised) scenario per run_id — grading must use the SAME
+# concrete answer key that was injected, not the static template. Bounded.
+RUN_STORE = {}
+_RUN_LOCK = threading.Lock()
+_RUN_CAP = 500
+
+
+def _store_run(run_id, concrete):
+    with _RUN_LOCK:
+        RUN_STORE[run_id] = concrete
+        if len(RUN_STORE) > _RUN_CAP:
+            for k in list(RUN_STORE)[:len(RUN_STORE) - _RUN_CAP]:
+                RUN_STORE.pop(k, None)
+
+
+def _get_run(run_id):
+    with _RUN_LOCK:
+        return RUN_STORE.get(run_id)
+
+
+def pick_scenario(difficulty):
+    """Random scenario at a difficulty (blind). '' / 'any' = any level."""
+    pool = [s for s in SCENARIOS.values()
+            if not difficulty or difficulty == "any"
+            or s.get("difficulty") == difficulty]
+    return random.choice(pool) if pool else None
 
 # ---------------------------------------------------------------- html
 
@@ -92,23 +128,40 @@ def e(s):
 
 # ---------------------------------------------------------------- views
 
+_LEVEL_BLURB = {
+    "beginner": "Single, clear attack. Good for learning the triage workflow.",
+    "intermediate": "One attacker, several techniques — classify and scope it.",
+    "advanced": "Multiple sources / stages. Correlate, prioritise, respond.",
+}
+
+
 def view_home():
     b = ["<form method=get action=/scenario>",
          "<div class=pan><label class=mut>Your name / callsign</label>"
          "<input type=text name=trainee placeholder='e.g. analyst-1' required "
          "style='margin-top:6px'></div>",
-         "<h2>Scenarios</h2><p class=mut>Pick a drill. Starting it injects a real, "
-         "labeled attack into the Wazuh manager — you then triage it in the live "
-         "dashboard and answer below.</p>"]
-    for sc in SCENARIOS.values():
+         "<h2>Start a drill</h2>",
+         "<p class=mut>Pick a difficulty. You get a random, unlabelled incident at "
+         "that level — the attack type is <b>not</b> revealed up front. A real, "
+         "randomised attack is injected into the live Wazuh manager; triage it in "
+         "the dashboard, then classify it below. Every run draws fresh source IPs "
+         "and target hosts, so the answers change each time.</p>",
+         "<div class=pan>"]
+    for lvl in (LEVELS or ["beginner"]):
         b.append(
             "<button class=card style='width:100%%;text-align:left;cursor:pointer' "
-            "name=id value='%s'>"
-            "<b>%s</b><span class='diff %s'>%s</span><br>"
+            "name=difficulty value='%s'>"
+            "<b style='text-transform:capitalize'>%s</b>"
+            "<span class='diff %s'>%s</span><br>"
             "<span class=mut>%s</span></button>" % (
-                e(sc["id"]), e(sc["title"]), e(sc["difficulty"]), e(sc["difficulty"]),
-                e(sc.get("briefing", "")[:140] + "...")))
-    b.append("</form>")
+                e(lvl), e(lvl), e(lvl), e(lvl), e(_LEVEL_BLURB.get(lvl, ""))))
+    if len(LEVELS) > 1:
+        b.append(
+            "<button class=card style='width:100%%;text-align:left;cursor:pointer' "
+            "name=difficulty value='any'><b>Surprise me</b>"
+            "<span class=diff style='background:#1b2b3a;color:var(--cy)'>any</span><br>"
+            "<span class=mut>Random incident at any difficulty.</span></button>")
+    b.append("</div></form>")
     lb = scoring.leaderboard(10)
     if lb:
         b.append("<h2>Leaderboard</h2><div class=pan><table>"
@@ -120,14 +173,21 @@ def view_home():
     return page("wazuh-soc-training", "".join(b))
 
 
+def _incident_code(run_id):
+    # neutral, stable-looking case number derived from the run id (no attack hint)
+    n = abs(hash(run_id)) % 9000 + 1000
+    return "INC-%d" % n
+
+
 def view_scenario(sc, trainee, run_id):
     dash = config.DASHBOARD_URL
-    b = ["<p><a href=/>&larr; scenarios</a></p>",
-         "<h2>%s<span class='diff %s'>%s</span></h2>" % (
-             e(sc["title"]), e(sc["difficulty"]), e(sc["difficulty"])),
-         "<div class=warnbox>&#9889; Drill launched — labeled attack traffic is now "
-         "being injected into the live Wazuh manager. Triage it in the dashboard, "
-         "then answer below. Run id: <span class=mono>%s</span></div>" % e(run_id),
+    b = ["<p><a href=/>&larr; back</a></p>",
+         "<h2>Live incident %s<span class='diff %s'>%s</span></h2>" % (
+             e(_incident_code(run_id)), e(sc["difficulty"]), e(sc["difficulty"])),
+         "<div class=warnbox>&#9889; Drill launched — randomised attack traffic is now "
+         "being injected into the live Wazuh manager. The attack type is not given: "
+         "triage it in the dashboard and classify it yourself. "
+         "Run id: <span class=mono>%s</span></div>" % e(run_id),
          "<div class=pan><b>Briefing.</b> %s</div>" % e(sc.get("briefing", "")),
          "<div class=pan><b>Where to look.</b> %s<br><br>"
          "<a class=btn href='%s' target=_blank rel=noopener>Open Wazuh dashboard &#8599;</a>"
@@ -154,7 +214,8 @@ def view_scenario(sc, trainee, run_id):
             b.append("<input type=text name='q_%s' placeholder='%s'>" % (qid, ph))
         b.append("</div>")
     b.append("<button class='btn g' type=submit>Submit triage report</button></form>")
-    return page(sc["title"], "".join(b))
+    # neutral page <title> too — never reveal the attack name in the blind view
+    return page("Live incident %s" % _incident_code(run_id), "".join(b))
 
 
 def _cls(frac):
@@ -162,8 +223,14 @@ def _cls(frac):
 
 
 def view_result(sc, trainee, graded):
-    b = ["<p><a href=/>&larr; scenarios</a></p>",
-         "<h2>Debrief — %s</h2>" % e(sc["title"]),
+    gt = sc.get("ground_truth", {})
+    reveal = e(sc["title"])
+    atk = gt.get("attack_type")
+    if atk:
+        reveal += " &middot; <span class=mut>%s</span>" % e(atk)
+    b = ["<p><a href=/>&larr; back</a></p>",
+         "<h2>Debrief</h2>",
+         "<div class=pan><span class=mut>This incident was:</span> <b>%s</b></div>" % reveal,
          "<div class=pan><h1 style='margin:0'>%s%%</h1>"
          "<div class=bar><i style='width:%s%%'></i></div>"
          "<p class=mut>%s / %s points · analyst %s</p></div>" % (
@@ -179,9 +246,11 @@ def view_result(sc, trainee, graded):
             "<span class=mut>%s</span></div>" % (
                 e(r["prompt"]), _cls(frac), r["got"], r["weight"],
                 e(given_disp), e(r["correct"]), e(r["explain"])))
-    b.append("<a class=btn href='/scenario?id=%s&trainee=%s'>Retry drill</a> "
-             "<a href=/ style='margin-left:8px'>All scenarios</a>" % (
-                 e(sc["id"]), urllib.parse.quote(trainee)))
+    b.append("<a class=btn href='/scenario?difficulty=%s&trainee=%s'>"
+             "Another %s drill</a> "
+             "<a href=/ style='margin-left:8px'>Change level</a>" % (
+                 e(sc.get("difficulty", "any")), urllib.parse.quote(trainee),
+                 e(sc.get("difficulty", ""))))
     return page("Debrief", "".join(b))
 
 
@@ -214,12 +283,19 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/":
             return self._send(200, view_home())
         if u.path == "/scenario":
-            sid = (qs.get("id") or [""])[0]
             trainee = (qs.get("trainee") or [""])[0].strip()[:40]
-            sc = SCENARIOS.get(sid)
-            if not sc or not trainee:
+            if not trainee:
                 return self._redirect("/")
+            sid = (qs.get("id") or [""])[0]
+            difficulty = (qs.get("difficulty") or [""])[0].strip().lower()
+            # blind: normally pick a random scenario at the chosen level; an
+            # explicit id is still honoured (instructor / direct link).
+            template = SCENARIOS.get(sid) if sid else pick_scenario(difficulty)
+            if not template:
+                return self._redirect("/")
+            sc = randomizer.materialize(template, config.AGENTS)
             run_id = injector.launch(sc, config.AGENTS)
+            _store_run(run_id, sc)
             return self._send(200, view_scenario(sc, trainee, run_id))
         if u.path == "/run":
             rid = (qs.get("id") or [""])[0]
@@ -236,7 +312,9 @@ class Handler(BaseHTTPRequestHandler):
         sid = (form.get("sid") or [""])[0]
         trainee = (form.get("trainee") or [""])[0].strip()[:40]
         run_id = (form.get("run_id") or [""])[0]
-        sc = SCENARIOS.get(sid)
+        # grade against the exact randomised instance that was injected; fall
+        # back to the static template if the run is unknown (e.g. after restart).
+        sc = _get_run(run_id) or SCENARIOS.get(sid)
         if not sc or not trainee:
             return self._redirect("/")
         answers = {}

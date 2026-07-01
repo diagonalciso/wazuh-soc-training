@@ -3,27 +3,31 @@
   "title": "Web Application Attack",
   "difficulty": "intermediate",
   "duration_min": 15,
-  "briefing": "The web server's access log is generating attack alerts. A single external source is probing the application with multiple payload types. Determine what the attacker is attempting, whether any request succeeded, and how to respond.",
+  "briefing": "The access log on $TARGET is generating attack alerts. A single external source is sending the web application a series of crafted requests with several different payload styles. Work out what the source is attempting, whether any request was served successfully, and how to respond.",
   "dashboard_hint": "Discover -> rule.groups: web OR rule.id: 31106. Inspect data.url for the payloads. Note the HTTP status code in the alert (200 = the app returned success).",
+  "randomize": {
+    "ips": {"SRC1": "webattack"},
+    "targets": {"TARGET": {"question": "target"}}
+  },
   "inject": {
     "steps": [
-      {"template": "web_sqli",      "agent": "app01", "srcips": ["103.97.176.11"], "count": 5, "spacing": [1.0, 3.0]},
-      {"template": "web_xss",       "agent": "app01", "srcips": ["103.97.176.11"], "count": 4, "spacing": [1.5, 3.5]},
-      {"template": "web_traversal", "agent": "app01", "srcips": ["103.97.176.11"], "count": 4, "spacing": [1.5, 4.0]},
-      {"template": "web_cmdinj",    "agent": "app01", "srcips": ["103.97.176.11"], "count": 3, "spacing": [2.0, 4.5]}
+      {"template": "web_sqli",      "agent": "$TARGET", "srcips": ["$SRC1"], "count": [4, 6], "spacing": [1.0, 3.0]},
+      {"template": "web_xss",       "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [1.5, 3.5]},
+      {"template": "web_traversal", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [1.5, 4.0]},
+      {"template": "web_cmdinj",    "agent": "$TARGET", "srcips": ["$SRC1"], "count": [2, 4], "spacing": [2.0, 4.5]}
     ]
   },
   "ground_truth": {
     "attack_type": "Web attack",
-    "target": "app01",
+    "target": "$TARGET",
     "mitre": "T1190",
     "severity": "High"
   },
   "questions": [
     {"id": "srcips", "type": "ipset", "weight": 2,
      "prompt": "Source IP(s) of the web attack?",
-     "answer": ["103.97.176.11"],
-     "explain": "A single external IP issued every malicious request in this scenario."},
+     "answer": ["$SRC1"],
+     "explain": "A single external IP ($SRC1) issued every malicious request in this scenario."},
     {"id": "type", "type": "choice", "weight": 1,
      "prompt": "Primary attack class?",
      "options": ["Brute force", "Web attack", "Malware", "Reconnaissance", "Denial of service"],
@@ -41,9 +45,9 @@
      "explain": "HTTP 200 means the app served the malicious request without rejecting it — worth confirming impact urgently."},
     {"id": "target", "type": "choice", "weight": 1,
      "prompt": "Which host is targeted?",
-     "options": ["web01", "db01", "app01", "ws01"],
-     "answer": "app01",
-     "explain": "agent.name on the web alerts is app01."},
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "agent.name on the web alerts is $TARGET."},
     {"id": "mitre", "type": "text", "weight": 1,
      "prompt": "Best-fit MITRE ATT&CK technique ID?",
      "answer": ["T1190"],

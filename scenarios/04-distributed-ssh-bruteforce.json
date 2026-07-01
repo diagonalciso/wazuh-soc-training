@@ -1,0 +1,52 @@
+{
+  "id": "distributed-ssh-bruteforce",
+  "title": "Distributed SSH Brute-Force",
+  "difficulty": "beginner",
+  "duration_min": 10,
+  "briefing": "The SSH service on $TARGET is being hit with failed logins from several different external addresses at once — a distributed guessing attempt rather than a single noisy host. Enumerate every source, confirm the target, classify the activity and recommend containment.",
+  "dashboard_hint": "Discover -> rule.id: 5710. Group by data.srcip — expect MORE THAN TWO distinct sources. Make sure you list them all.",
+  "randomize": {
+    "ips": {"SRC1": "bruteforce", "SRC2": "bruteforce", "SRC3": "bruteforce", "SRC4": "bruteforce"},
+    "targets": {"TARGET": {"question": "target"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "sshd_invalid", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [0.4, 1.6]},
+      {"template": "sshd_failed",  "agent": "$TARGET", "srcips": ["$SRC2"], "count": [3, 5], "spacing": [0.4, 1.6]},
+      {"template": "sshd_invalid", "agent": "$TARGET", "srcips": ["$SRC3"], "count": [3, 5], "spacing": [0.4, 1.6]},
+      {"template": "sshd_failed",  "agent": "$TARGET", "srcips": ["$SRC4"], "count": [3, 5], "spacing": [0.4, 1.6]},
+      {"template": "sshd_invalid", "agent": "$TARGET", "srcips": ["$SRC1", "$SRC2", "$SRC3", "$SRC4"], "count": [4, 8], "spacing": [0.6, 2.2]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Brute force",
+    "target": "$TARGET",
+    "mitre": "T1110",
+    "severity": "Medium"
+  },
+  "questions": [
+    {"id": "srcips", "type": "ipset", "weight": 3,
+     "prompt": "List ALL attacking source IPs (comma-separated).",
+     "answer": ["$SRC1", "$SRC2", "$SRC3", "$SRC4"],
+     "explain": "Four external IPs ($SRC1, $SRC2, $SRC3, $SRC4) each generated SSH auth failures against the same host — miss any and you under-scope the block list."},
+    {"id": "type", "type": "choice", "weight": 1,
+     "prompt": "What class of attack is this?",
+     "options": ["Brute force", "Web attack", "Malware", "Reconnaissance", "Data exfiltration"],
+     "answer": "Brute force",
+     "explain": "Many external sources, repeated failed authentication = distributed credential brute force."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is being targeted?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Every 5710 alert carries agent.name = $TARGET."},
+    {"id": "mitre", "type": "text", "weight": 1,
+     "prompt": "Best-fit MITRE ATT&CK technique ID?",
+     "answer": ["T1110", "T1110.001"],
+     "explain": "T1110 Brute Force (distributed guessing)."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Recommended containment (select all that apply):",
+     "options": ["Block all the source IPs (or the ranges) at the firewall", "Rate-limit / fail2ban on SSH", "Move SSH to key-only auth", "Just block the first IP you saw", "Ignore — it's just noise"],
+     "answer": ["Block all the source IPs (or the ranges) at the firewall", "Rate-limit / fail2ban on SSH", "Move SSH to key-only auth"],
+     "explain": "Block ALL sources, rate-limit, key-only auth. Blocking one IP leaves the rest; ignoring is wrong."}
+  ]
+}

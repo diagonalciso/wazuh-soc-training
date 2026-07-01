@@ -8,14 +8,17 @@
 A self-contained SOC analyst training platform for [Wazuh](https://wazuh.com). It
 drives real drills end-to-end:
 
-1. Trainee picks a **scenario** (SSH brute-force, web-app attack, multi-stage
-   intrusion, …).
+1. Trainee picks a **difficulty level** (beginner / intermediate / advanced). They
+   get a **random, unlabelled incident** at that level — the attack type is *not*
+   revealed up front, so they have to classify it themselves (blind triage).
 2. Starting the drill **injects a labeled attack** into the live Wazuh manager via
    the analysisd queue socket — real alerts appear in the **real Wazuh dashboard**.
+   Every run is **randomised**: fresh source IPs, target host and event volumes are
+   drawn each time, so the answer key changes on every start (no memorising).
 3. Trainee **triages in the actual dashboard** (link provided), then answers the
-   scenario's triage questions.
-4. Answers are **auto-graded** against ground truth, with a per-question debrief,
-   score, and a **leaderboard** (SQLite).
+   incident's triage questions.
+4. Answers are **auto-graded** against that run's ground truth, with a per-question
+   debrief (the attack is revealed here), score, and a **leaderboard** (SQLite).
 
 Because the alerts are real Wazuh alerts, everything the analyst learns —
 Discover queries, `rule.groups`, `data.srcip` pivots, agent correlation — is
@@ -57,16 +60,39 @@ Adding new templates: verify with `wazuh-logtest` that the rule fires and
 
 ## Scenarios
 
+Two drills per level; the tool serves a random one at the chosen level.
+
 | File | Level | Teaches |
 |------|-------|---------|
 | `scenarios/01-ssh-bruteforce.json` | beginner | source-IP + host identification, containment basics |
+| `scenarios/04-distributed-ssh-bruteforce.json` | beginner | enumerating *all* sources (4+), not under-scoping the block list |
 | `scenarios/02-web-app-attack.json` | intermediate | payload classification, reading HTTP 200 = success, web response |
+| `scenarios/05-ssh-password-spray.json` | intermediate | spray vs brute force, T1110.003, MFA/lockout response |
 | `scenarios/03-multistage-intrusion.json` | advanced | separating actors, kill-chain progression, prioritisation |
+| `scenarios/06-web-rce-attempt.json` | advanced | command injection / RCE, 200 = possible compromise, IR response |
 
 A scenario is one JSON file: `briefing`, `dashboard_hint`, `inject.steps`
-(template + agent + srcips + count + pacing), `ground_truth`, and `questions`
-(types: `choice`, `multi`, `ipset`, `text`). Drop a new file in `scenarios/` and
-restart — no code change.
+(template + agent + srcips + count/pacing), `ground_truth`, `questions`
+(types: `choice`, `multi`, `ipset`, `text`), and an optional `randomize` block.
+Drop a new file in `scenarios/` and restart — no code change.
+
+### Per-run randomisation
+
+`randomizer.py` "materialises" a template into a concrete run at start:
+
+```json
+"randomize": {
+    "ips":     {"SRC1": "bruteforce", "SRC2": "bruteforce"},
+    "targets": {"TARGET": {"question": "target"}}
+}
+```
+
+Referenced as `$TOKENS` anywhere in the scenario. `ips` draws distinct IPs from a
+named pool; `targets` draws distinct hosts from the live fleet and rebuilds the
+named choice question's options (correct host + random decoys). Step `count` may
+be an `[min, max]` range. Grading constants (attack class, MITRE id, severity)
+are **not** randomised — they are the learning objective. The materialised run is
+stored per `run_id` so grading uses the exact key that was injected.
 
 ## Run
 
