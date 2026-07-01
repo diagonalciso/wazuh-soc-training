@@ -79,27 +79,26 @@ sudo env $(grep -v '^#' /etc/wazuh-soc-training.env | xargs) python3 app.py
 Needs write access to the queue socket → run as `root` or the `wazuh` user. See
 [docs/ADMIN.md](docs/ADMIN.md) for operations.
 
-## Full lab from scratch
+## Full lab from scratch — one command
 
-The **only real thing you install by hand is one Wazuh all-in-one server**. The
-rest — a fleet of endpoints, their agents, the network, and the attacks — is
-scripted. See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the end-to-end runbook.
+The **only real thing you provide is one Linux box**. Endpoints and agents are
+**DB-only** — registered in the manager and kept **Active** by a keepalive
+simulator (no containers, no VMs per endpoint, no nested virt).
 
 ```bash
-# 1. install the real Wazuh AIO server (VM / bare metal) — see DEPLOY.md stage 1
-# 2. stand up virtual endpoints (Wazuh agents in containers) that enroll to it:
-cd lab
-cp lab.env.example lab.env        # MANAGER_IP, ENROLL_PASSWORD, WAZUH_VERSION
-cp fleet.example.txt fleet.txt    # web01/db01/dc01/ws01... names, ips, roles
-./deploy-lab.sh                   # builds agent image + starts the fleet
-# 3. install this tool on the manager, wire TRAIN_AGENTS to the real agent ids:
-cd .. && ./deploy.sh <user>@<server-ip>
-lab/agents-to-trainenv.sh <user>@<server-ip>   # prints TRAIN_AGENTS=001:web01,...
+git clone https://github.com/diagonalciso/wazuh-soc-training
+cd wazuh-soc-training
+sudo ./bootstrap.sh          # installs Wazuh AIO + enrolls fleet + simulator + tool
 ```
 
-`lab/` contents: `agent.Dockerfile` + `entrypoint.sh` (a virtual endpoint),
-`deploy-lab.sh` / `teardown-lab.sh` (fleet up/down), `agents-to-trainenv.sh`
-(map real agent ids into the tool's env).
+It prints the dashboard URL, the training URL, and the fleet when done. Prefer a
+throwaway VM? `vagrant up` boots one and runs the same bootstrap inside it.
+
+How the DB-only fleet works: `lab/enroll-fleet.sh` registers each agent via authd
+(:1515); `lab/agent_sim.py` speaks Wazuh's encrypted 1514 protocol to send
+keepalives so they show **Active** with no real endpoint; the queue-socket
+injector feeds their alerts. Full runbook + manual stages + the optional
+*real-agent container* path: **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ## Routes
 

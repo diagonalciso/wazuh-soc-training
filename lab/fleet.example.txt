@@ -1,16 +1,18 @@
-# Virtual endpoint fleet. One line per endpoint:
-#   name    ip              role        group
-# name  = agent name shown in Wazuh + container hostname
-# ip    = static IP on the lab docker network (must be inside LAB_SUBNET)
+# Fleet of DB-only agents. One line per endpoint:
+#   name    ip              role         group
+# name  = agent name shown in Wazuh
+# ip    = registered agent IP (cosmetic in DB-only mode; shown in dashboard)
 # role  = free label (used in training scenarios / your own notes)
-# group = Wazuh agent group (optional; must exist on manager or use "default")
+# group = Wazuh agent group (must exist on manager, or use "default")
 #
-# Edit to taste. These map to TRAIN_AGENTS in the training tool.
-web01        172.30.0.11     web          default
-web02        172.30.0.12     web          default
-app01        172.30.0.13     app          default
-db01         172.30.0.14     database     default
-dc01         172.30.0.15     domain-ctrl  default
-jump01       172.30.0.16     bastion      default
-ws01         172.30.0.21     workstation  default
-ws02         172.30.0.22     workstation  default
+# DB-only: these are registered via authd (enroll-fleet.sh) and kept ACTIVE by
+# the keepalive simulator (agent_sim.py). No containers or VMs are created.
+# They map to TRAIN_AGENTS in the training tool.
+web01        10.10.0.11      web          default
+web02        10.10.0.12      web          default
+app01        10.10.0.13      app          default
+db01         10.10.0.14      database     default
+dc01         10.10.0.15      domain-ctrl  default
+jump01       10.10.0.16      bastion      default
+ws01         10.10.0.21      workstation  default
+ws02         10.10.0.22      workstation  default

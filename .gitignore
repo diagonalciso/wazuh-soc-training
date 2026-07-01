@@ -4,6 +4,9 @@
 !*.env.example
 # lab: real topology / local fleet (keep the .example)
 lab/fleet.txt
+# lab: enrolled agent keys (secrets) + local lab config
+lab/agent_sim.keys
+lab/*.keys
 # runtime data
 *.db
 *.db-wal

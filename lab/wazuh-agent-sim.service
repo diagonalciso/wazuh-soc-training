@@ -1,0 +1,23 @@
+[Unit]
+Description=Wazuh DB-only agent keepalive simulator (lab)
+Documentation=https://github.com/diagonalciso/wazuh-soc-training
+After=network-online.target wazuh-manager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Path is rewritten by bootstrap.sh to the installed location.
+WorkingDirectory=/opt/wazuh-soc-training/lab
+ExecStart=/usr/bin/python3 /opt/wazuh-soc-training/lab/agent_sim.py \
+  --manager ${MANAGER_IP} --port ${MANAGER_PORT} \
+  --interval ${KEEPALIVE_INTERVAL} --keys /opt/wazuh-soc-training/lab/agent_sim.keys
+Environment=MANAGER_IP=127.0.0.1
+Environment=MANAGER_PORT=1514
+Environment=KEEPALIVE_INTERVAL=30
+Restart=always
+RestartSec=10
+# Sends only network keepalives; no privileged access needed.
+DynamicUser=yes
+
+[Install]
+WantedBy=multi-user.target
