@@ -45,7 +45,14 @@ enroll() {
 
 while read -r name ip role group _rest; do
   case "$name" in ''|\#*) continue ;; esac
-  ip="${ip:-any}"; group="${group:-default}"
+  group="${group:-default}"
+  # These are DB-only simulated agents: agent_sim.py connects to remoted from the
+  # manager host itself (127.0.0.1), NOT from the cosmetic fleet IP in fleet.txt.
+  # If we register a fixed IP, remoted rejects every keepalive with
+  # "(1408): Invalid ID <id> for the source ip: '127.0.0.1'" and the agents stay
+  # "Never connected". Registering with IP 'any' lets them connect from anywhere.
+  # The fleet.txt IP column is kept only for readability of the topology.
+  ip="any"
   resp="$(enroll "$name" "$ip" "$group")"
   # resp = OSSEC K:'ID NAME IP KEY'
   key_body="${resp#*\'}"; key_body="${key_body%\'*}"

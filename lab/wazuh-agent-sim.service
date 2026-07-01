@@ -8,9 +8,13 @@ Wants=network-online.target
 Type=simple
 # Path is rewritten by bootstrap.sh to the installed location.
 WorkingDirectory=/opt/wazuh-soc-training/lab
+# The keys file is a secret (0600 root). LoadCredential hands it to the service
+# via %d (=$CREDENTIALS_DIRECTORY) so it stays unreadable to everyone else and
+# still works under DynamicUser (random uid can't open a root-owned 0600 file).
+LoadCredential=agent_sim_keys:/opt/wazuh-soc-training/lab/agent_sim.keys
 ExecStart=/usr/bin/python3 /opt/wazuh-soc-training/lab/agent_sim.py \
   --manager ${MANAGER_IP} --port ${MANAGER_PORT} \
-  --interval ${KEEPALIVE_INTERVAL} --keys /opt/wazuh-soc-training/lab/agent_sim.keys
+  --interval ${KEEPALIVE_INTERVAL} --keys %d/agent_sim_keys
 Environment=MANAGER_IP=127.0.0.1
 Environment=MANAGER_PORT=1514
 Environment=KEEPALIVE_INTERVAL=30
