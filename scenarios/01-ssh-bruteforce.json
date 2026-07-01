@@ -6,14 +6,65 @@
   "briefing": "Overnight, monitoring on $TARGET flagged a burst of failed authentication events against its internet-facing SSH service. Two external sources appear to be involved. Triage the alerts in the Wazuh dashboard, identify the sources and the targeted host, classify the activity, and recommend containment.",
   "dashboard_hint": "Discover -> filter rule.groups: authentication_failed, or rule.id: 5710. Group by data.srcip and agent.name. Look at the last 30 minutes.",
   "randomize": {
-    "ips": {"SRC1": "bruteforce", "SRC2": "bruteforce"},
-    "targets": {"TARGET": {"question": "target"}}
+    "ips": {
+      "SRC1": "bruteforce",
+      "SRC2": "bruteforce"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
   },
   "inject": {
     "steps": [
-      {"template": "sshd_invalid", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [8, 12], "spacing": [0.5, 1.8]},
-      {"template": "sshd_failed",  "agent": "$TARGET", "srcips": ["$SRC2"], "count": [6, 10], "spacing": [0.6, 2.2]},
-      {"template": "sshd_invalid", "agent": "$TARGET", "srcips": ["$SRC1", "$SRC2"], "count": [4, 8], "spacing": [1.0, 3.0]}
+      {
+        "template": "sshd_invalid",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "count": [
+          8,
+          12
+        ],
+        "spacing": [
+          0.5,
+          1.8
+        ]
+      },
+      {
+        "template": "sshd_failed",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC2"
+        ],
+        "count": [
+          6,
+          10
+        ],
+        "spacing": [
+          0.6,
+          2.2
+        ]
+      },
+      {
+        "template": "sshd_invalid",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1",
+          "$SRC2"
+        ],
+        "count": [
+          4,
+          8
+        ],
+        "spacing": [
+          1.0,
+          3.0
+        ]
+      }
     ]
   },
   "ground_truth": {
@@ -23,33 +74,87 @@
     "severity": "High"
   },
   "questions": [
-    {"id": "srcips", "type": "ipset", "weight": 2,
-     "prompt": "Which source IP(s) are conducting the attack? (comma-separated)",
-     "answer": ["$SRC1", "$SRC2"],
-     "explain": "Both external IPs ($SRC1, $SRC2) generated repeated rule 5710/5716 auth failures against the same host."},
-    {"id": "type", "type": "choice", "weight": 1,
-     "prompt": "What class of attack is this?",
-     "options": ["Brute force", "Web attack", "Malware", "Reconnaissance", "Data exfiltration"],
-     "answer": "Brute force",
-     "explain": "Repeated failed authentication from external sources = credential brute force / password guessing."},
-    {"id": "target", "type": "choice", "weight": 1,
-     "prompt": "Which agent/host is being targeted?",
-     "options": ["$TARGET"],
-     "answer": "$TARGET",
-     "explain": "All the auth-failure alerts carry agent.name = $TARGET."},
-    {"id": "mitre", "type": "text", "weight": 1,
-     "prompt": "Which MITRE ATT&CK technique ID best fits? (e.g. T1234)",
-     "answer": ["T1110", "T1110.001"],
-     "explain": "T1110 Brute Force (T1110.001 Password Guessing)."},
-    {"id": "severity", "type": "choice", "weight": 1,
-     "prompt": "What severity would you assign?",
-     "options": ["Informational", "Low", "Medium", "High", "Critical"],
-     "answer": "High",
-     "explain": "Sustained external brute force against an internet-facing SSH service is high severity until confirmed unsuccessful."},
-    {"id": "containment", "type": "multi", "weight": 2,
-     "prompt": "Recommended immediate containment (select all that apply):",
-     "options": ["Block the source IPs at the firewall", "Enforce account lockout / fail2ban", "Disable SSH password auth (keys only)", "Reboot the host", "Ignore — it's just noise"],
-     "answer": ["Block the source IPs at the firewall", "Enforce account lockout / fail2ban", "Disable SSH password auth (keys only)"],
-     "explain": "Block sources, add rate-limiting/lockout, and move to key-only auth. Rebooting does nothing; ignoring is wrong."}
+    {
+      "id": "srcips",
+      "type": "ipset",
+      "weight": 2,
+      "prompt": "Which source IP(s) are conducting the attack? (comma-separated)",
+      "answer": [
+        "$SRC1",
+        "$SRC2"
+      ],
+      "explain": "Both external IPs ($SRC1, $SRC2) generated repeated rule 5710/5716 auth failures against the same host."
+    },
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "What class of attack is this?",
+      "options": [
+        "Brute force",
+        "Web attack",
+        "Malware",
+        "Reconnaissance",
+        "Data exfiltration"
+      ],
+      "answer": "Brute force",
+      "explain": "Repeated failed authentication from external sources = credential brute force / password guessing."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which agent/host is being targeted?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All the auth-failure alerts carry agent.name = $TARGET."
+    },
+    {
+      "id": "mitre",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Which MITRE ATT&CK technique ID best fits? (e.g. T1234)",
+      "answer": [
+        "T1110",
+        "T1110.001"
+      ],
+      "explain": "T1110 Brute Force (T1110.001 Password Guessing)."
+    },
+    {
+      "id": "severity",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "What severity would you assign?",
+      "options": [
+        "Informational",
+        "Low",
+        "Medium",
+        "High",
+        "Critical"
+      ],
+      "answer": "High",
+      "explain": "Sustained external brute force against an internet-facing SSH service is high severity until confirmed unsuccessful."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Recommended immediate containment (select all that apply):",
+      "options": [
+        "Block the source IPs at the firewall",
+        "Enforce account lockout / fail2ban",
+        "Disable SSH password auth (keys only)",
+        "Reboot the host",
+        "Ignore \u2014 it's just noise"
+      ],
+      "answer": [
+        "Block the source IPs at the firewall",
+        "Enforce account lockout / fail2ban",
+        "Disable SSH password auth (keys only)"
+      ],
+      "explain": "Block sources, add rate-limiting/lockout, and move to key-only auth. Rebooting does nothing; ignoring is wrong."
+    }
   ]
 }

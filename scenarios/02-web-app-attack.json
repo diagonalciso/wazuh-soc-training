@@ -6,15 +6,78 @@
   "briefing": "The access log on $TARGET is generating attack alerts. A single external source is sending the web application a series of crafted requests with several different payload styles. Work out what the source is attempting, whether any request was served successfully, and how to respond.",
   "dashboard_hint": "Discover -> rule.groups: web OR rule.id: 31106. Inspect data.url for the payloads. Note the HTTP status code in the alert (200 = the app returned success).",
   "randomize": {
-    "ips": {"SRC1": "webattack"},
-    "targets": {"TARGET": {"question": "target"}}
+    "ips": {
+      "SRC1": "webattack"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
   },
   "inject": {
     "steps": [
-      {"template": "web_sqli",      "agent": "$TARGET", "srcips": ["$SRC1"], "count": [4, 6], "spacing": [1.0, 3.0]},
-      {"template": "web_xss",       "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [1.5, 3.5]},
-      {"template": "web_traversal", "agent": "$TARGET", "srcips": ["$SRC1"], "count": [3, 5], "spacing": [1.5, 4.0]},
-      {"template": "web_cmdinj",    "agent": "$TARGET", "srcips": ["$SRC1"], "count": [2, 4], "spacing": [2.0, 4.5]}
+      {
+        "template": "web_sqli",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "count": [
+          4,
+          6
+        ],
+        "spacing": [
+          1.0,
+          3.0
+        ]
+      },
+      {
+        "template": "web_xss",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "count": [
+          3,
+          5
+        ],
+        "spacing": [
+          1.5,
+          3.5
+        ]
+      },
+      {
+        "template": "web_traversal",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "count": [
+          3,
+          5
+        ],
+        "spacing": [
+          1.5,
+          4.0
+        ]
+      },
+      {
+        "template": "web_cmdinj",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "count": [
+          2,
+          4
+        ],
+        "spacing": [
+          2.0,
+          4.5
+        ]
+      }
     ]
   },
   "ground_truth": {
@@ -24,38 +87,105 @@
     "severity": "High"
   },
   "questions": [
-    {"id": "srcips", "type": "ipset", "weight": 2,
-     "prompt": "Source IP(s) of the web attack?",
-     "answer": ["$SRC1"],
-     "explain": "A single external IP ($SRC1) issued every malicious request in this scenario."},
-    {"id": "type", "type": "choice", "weight": 1,
-     "prompt": "Primary attack class?",
-     "options": ["Brute force", "Web attack", "Malware", "Reconnaissance", "Denial of service"],
-     "answer": "Web attack",
-     "explain": "SQL injection, XSS, path traversal and command injection are all web-application attacks."},
-    {"id": "payloads", "type": "multi", "weight": 2,
-     "prompt": "Which payload types are present in the requests? (select all)",
-     "options": ["SQL injection", "Cross-site scripting (XSS)", "Path/directory traversal", "Command injection", "LDAP injection"],
-     "answer": ["SQL injection", "Cross-site scripting (XSS)", "Path/directory traversal", "Command injection"],
-     "explain": "UNION SELECT (SQLi), <script> (XSS), ../../etc/passwd (traversal), ;wget (command injection). No LDAP."},
-    {"id": "success", "type": "choice", "weight": 1,
-     "prompt": "The alerts fired on rule 31106 ('web attack returned code 200'). What does the 200 tell you?",
-     "options": ["The attack was blocked", "The server returned success to the attacker's request", "The request never reached the server", "The log is corrupt"],
-     "answer": "The server returned success to the attacker's request",
-     "explain": "HTTP 200 means the app served the malicious request without rejecting it — worth confirming impact urgently."},
-    {"id": "target", "type": "choice", "weight": 1,
-     "prompt": "Which host is targeted?",
-     "options": ["$TARGET"],
-     "answer": "$TARGET",
-     "explain": "agent.name on the web alerts is $TARGET."},
-    {"id": "mitre", "type": "text", "weight": 1,
-     "prompt": "Best-fit MITRE ATT&CK technique ID?",
-     "answer": ["T1190"],
-     "explain": "T1190 Exploit Public-Facing Application."},
-    {"id": "containment", "type": "multi", "weight": 2,
-     "prompt": "Immediate response (select all that apply):",
-     "options": ["Block the source IP", "Put a WAF rule / virtual patch in front of the app", "Review the app + DB for signs of compromise", "Rotate any credentials the app exposes", "Do nothing until tomorrow"],
-     "answer": ["Block the source IP", "Put a WAF rule / virtual patch in front of the app", "Review the app + DB for signs of compromise", "Rotate any credentials the app exposes"],
-     "explain": "Because requests returned 200, treat as possible compromise: block, virtual-patch, hunt, rotate."}
+    {
+      "id": "srcips",
+      "type": "ipset",
+      "weight": 2,
+      "prompt": "Source IP(s) of the web attack?",
+      "answer": [
+        "$SRC1"
+      ],
+      "explain": "A single external IP ($SRC1) issued every malicious request in this scenario."
+    },
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Primary attack class?",
+      "options": [
+        "Brute force",
+        "Web attack",
+        "Malware",
+        "Reconnaissance",
+        "Denial of service"
+      ],
+      "answer": "Web attack",
+      "explain": "SQL injection, XSS, path traversal and command injection are all web-application attacks."
+    },
+    {
+      "id": "payloads",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which payload types are present in the requests? (select all)",
+      "options": [
+        "SQL injection",
+        "Cross-site scripting (XSS)",
+        "Path/directory traversal",
+        "Command injection",
+        "LDAP injection"
+      ],
+      "answer": [
+        "SQL injection",
+        "Cross-site scripting (XSS)",
+        "Path/directory traversal",
+        "Command injection"
+      ],
+      "explain": "UNION SELECT (SQLi), <script> (XSS), ../../etc/passwd (traversal), ;wget (command injection). No LDAP."
+    },
+    {
+      "id": "success",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "The alerts fired on rule 31106 ('web attack returned code 200'). What does the 200 tell you?",
+      "options": [
+        "The attack was blocked",
+        "The server returned success to the attacker's request",
+        "The request never reached the server",
+        "The log is corrupt"
+      ],
+      "answer": "The server returned success to the attacker's request",
+      "explain": "HTTP 200 means the app served the malicious request without rejecting it \u2014 worth confirming impact urgently."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is targeted?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "agent.name on the web alerts is $TARGET."
+    },
+    {
+      "id": "mitre",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Best-fit MITRE ATT&CK technique ID?",
+      "answer": [
+        "T1190"
+      ],
+      "explain": "T1190 Exploit Public-Facing Application."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Immediate response (select all that apply):",
+      "options": [
+        "Block the source IP",
+        "Put a WAF rule / virtual patch in front of the app",
+        "Review the app + DB for signs of compromise",
+        "Rotate any credentials the app exposes",
+        "Do nothing until tomorrow"
+      ],
+      "answer": [
+        "Block the source IP",
+        "Put a WAF rule / virtual patch in front of the app",
+        "Review the app + DB for signs of compromise",
+        "Rotate any credentials the app exposes"
+      ],
+      "explain": "Because requests returned 200, treat as possible compromise: block, virtual-patch, hunt, rotate."
+    }
   ]
 }
