@@ -315,6 +315,18 @@ sudo systemctl enable --now wazuh-soc-training.service
 curl -s http://127.0.0.1:8101/healthz          # {"ok":true}
 ```
 
+**Only two fields must be edited** in `/etc/wazuh-soc-training.env`:
+
+| Field | Set to |
+|-------|--------|
+| `WAZUH_DASHBOARD_URL` | The real Wazuh dashboard URL the trainee triages in, e.g. `https://10.10.0.10`. |
+| `TRAIN_AGENTS` | Real `id:name` pairs on **this** manager (comma-separated). Drives which hosts scenarios target and the names shown to the trainee. Get them with `sudo /var/ossec/bin/agent_control -l`. |
+
+Everything else has a working default. `QUEUE_SOCKET` is the standard local
+analysisd path; the `INDEXER_*` block is only used if you extend the tool to
+verify landed events (unused otherwise — leave `INDEXER_PASS` as-is);
+`TRAIN_BIND` can be narrowed from `0.0.0.0` to an internal IP to limit exposure.
+
 ### Stage 4 — run a drill
 
 Open `http://<host>:8101/`. See §9.
