@@ -227,6 +227,63 @@ def _line(template, ip, st=None, computer="host01"):
             severity="AUDIT_SUCCESS",
             message="An account was successfully logged on.")
 
+    # ---- Windows assume-breach: stolen creds / hijacked sessions ---------
+    # Adversary already authenticated. Reuse of stolen secrets (hash/ticket),
+    # takeover of a live session, credential theft from AD, and persistence —
+    # all successful events, no perimeter brute force. (100135-100139, 100170)
+    if template == "win_pth":                 # 4624 type3 NTLM — Pass-the-Hash
+        return _winevt(4624, computer, {
+            "targetUserName": wuser, "targetDomainName": "LAB",
+            "logonType": "3", "authenticationPackageName": "NTLM",
+            "logonProcessName": "NtLmSsp", "keyLength": "0",
+            "workstationName": "KALI", "ipAddress": ip, "ipPort": str(port)},
+            severity="AUDIT_SUCCESS",
+            message="An account was successfully logged on.")
+    if template == "win_ptt":                 # 4624 type9 seclogo — overpass/Pass-the-Ticket
+        return _winevt(4624, computer, {
+            "targetUserName": wuser, "targetDomainName": "LAB",
+            "logonType": "9", "authenticationPackageName": "Negotiate",
+            "logonProcessName": "seclogo",
+            "processName": "C:\\Windows\\System32\\runas.exe",
+            "ipAddress": "-", "ipPort": "-"},
+            severity="AUDIT_SUCCESS",
+            message="An account was logged on with explicit credentials.")
+    if template == "win_rdp_hijack":          # 4778 session reconnected from a new source
+        return _winevt(4778, computer, {
+            "accountName": wuser, "accountDomain": "LAB",
+            "sessionName": "RDP-Tcp#%d" % random.randint(1, 9),
+            "clientName": "KALI", "clientAddress": ip},
+            severity="AUDIT_SUCCESS",
+            message="A session was reconnected to a Window Station.")
+    if template == "win_dcsync":              # 4662 replication rights — DCSync
+        return _winevt(4662, computer, {
+            "subjectUserName": wuser, "subjectDomainName": "LAB",
+            "objectServer": "DS", "objectType": "domainDNS",
+            "operationType": "Object Access", "accessMask": "0x100",
+            "properties": "Replicating Directory Changes "
+                          "{1131f6aa-9c07-11d1-f79f-00c04fc2dcd2} "
+                          "{1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}"},
+            severity="AUDIT_SUCCESS",
+            message="An operation was performed on an object.")
+    if template == "win_schtask":             # 4698 scheduled task created (persistence)
+        return _winevt(4698, computer, {
+            "subjectUserName": wuser, "subjectDomainName": "LAB",
+            "taskName": st.get("task")
+            or "\\Microsoft\\Windows\\UpdateOrchestrator\\SvcRefresh",
+            "taskContent": st.get("cmd")
+            or "<Exec><Command>powershell.exe</Command><Arguments>"
+               "-nop -w hidden -enc SQBFAFgA</Arguments></Exec>"},
+            severity="AUDIT_SUCCESS",
+            message="A scheduled task was created.")
+    if template == "win_defender_off":        # Defender 5001 real-time protection disabled
+        return _winevt(5001, computer, {
+            "product": "Windows Defender Antivirus"},
+            provider="Microsoft-Windows-Windows Defender",
+            guid="{11cd958a-c507-4ef3-b3f2-5fd9dfbd2c78}",
+            channel="Microsoft-Windows-Windows Defender/Operational",
+            severity="INFORMATION",
+            message="Real-time protection is disabled.")
+
     # ---- Sysmon channel (training_rules.xml 100140-100161) ----
     if template.startswith("sysmon_"):
         return _sysmon(template, ip, st, computer, pid)

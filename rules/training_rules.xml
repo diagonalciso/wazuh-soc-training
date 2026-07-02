@@ -157,6 +157,75 @@
     <options>no_full_log</options>
   </rule>
 
+  <!-- ============================ Windows assume-breach (stolen creds) -->
+
+  <!-- 4624 type3 with NTLM package = Pass-the-Hash lateral logon.
+       Refines 100134 (type3 network logon): NTLM instead of Kerberos to a
+       server, keyLength 0, from an odd workstation = reused hash. -->
+  <rule id="100135" level="8">
+    <if_sid>100134</if_sid>
+    <field name="win.eventdata.authenticationPackageName">^NTLM$</field>
+    <description>Training: NTLM network logon (Pass-the-Hash) as $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)</description>
+    <group>training_win_pth,lateral_movement,</group>
+    <mitre><id>T1550.002</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4624 type9 (NewCredentials, seclogo) = overpass-the-hash /
+       Pass-the-Ticket via runas /netonly. Session uses injected creds. -->
+  <rule id="100136" level="8">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4624$</field>
+    <field name="win.eventdata.logonType">^9$</field>
+    <description>Training: Explicit-credential logon (overpass/Pass-the-Ticket) as $(win.eventdata.targetUserName) on $(win.system.computer)</description>
+    <group>training_win_ptt,lateral_movement,</group>
+    <mitre><id>T1550.003</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4778 - session reconnected. From an unfamiliar client = RDP session
+       hijack / takeover of a live logged-in session. -->
+  <rule id="100137" level="7">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4778$</field>
+    <description>Training: RDP session reconnected to $(win.system.computer) as $(win.eventdata.accountName) from $(win.eventdata.clientAddress) (possible session hijack)</description>
+    <group>training_win_hijack,lateral_movement,</group>
+    <mitre><id>T1563.002</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4662 with the DS-Replication-Get-Changes GUID = DCSync. A non-DC
+       principal requesting directory replication is credential theft. -->
+  <rule id="100138" level="12">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4662$</field>
+    <field name="win.eventdata.properties">1131f6aa-9c07-11d1-f79f-00c04fc2dcd2</field>
+    <description>Training: Directory replication requested by $(win.eventdata.subjectUserName) — DCSync credential theft</description>
+    <group>training_win_dcsync,credential_access,</group>
+    <mitre><id>T1003.006</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- 4698 - scheduled task created (Windows persistence, cron analogue). -->
+  <rule id="100139" level="7">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^4698$</field>
+    <description>Training: Scheduled task created on $(win.system.computer) by $(win.eventdata.subjectUserName)</description>
+    <group>training_win_persistence,</group>
+    <mitre><id>T1053.005</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Defender EID 5001 - real-time protection disabled (impair defenses). -->
+  <rule id="100170" level="10">
+    <if_sid>100100</if_sid>
+    <field name="win.system.eventID">^5001$</field>
+    <description>Training: Windows Defender real-time protection disabled on $(win.system.computer)</description>
+    <group>training_win_evasion,</group>
+    <mitre><id>T1562.001</id></mitre>
+    <options>no_full_log</options>
+  </rule>
+
   <!-- =================================================== Sysmon (channel) -->
 
   <!-- Sysmon EID 1 - process create (base for command-line detections). -->

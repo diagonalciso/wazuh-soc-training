@@ -1,0 +1,55 @@
+{
+  "id": "win-rdp-session-hijack",
+  "title": "RDP Session Hijack",
+  "difficulty": "advanced",
+  "duration_min": 13,
+  "briefing": "Host $TARGET logged Event ID 4778 (a session was reconnected to a Window Station) for $USER1, but the reconnect came from client $SRC1 — a different source than the one that originally opened the session. An attacker already on the network reconnected to $USER1's live, still-logged-in RDP session (e.g. tscon to another user's session from SYSTEM), taking over an authenticated desktop without any credentials of their own. Recognise the session takeover and its impact.",
+  "dashboard_hint": "Discover -> rule.id: 100137. Look at Event ID 4778 win.eventdata.accountName and clientAddress. A reconnect from a NEW clientAddress to an existing session = hijack. There is no 4625/logon-failure and no fresh 4624 — the attacker inherited an already-authenticated session.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_rdp_hijack", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [1, 2], "spacing": [1.0, 3.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "RDP session hijack",
+    "target": "$TARGET",
+    "mitre": "T1563.002",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What happened on $TARGET?",
+     "options": ["An existing RDP session was hijacked/reconnected by another party", "A brute-force login succeeded", "Ransomware started encrypting", "A port scan"],
+     "answer": "An existing RDP session was hijacked/reconnected by another party",
+     "explain": "Event 4778 is a session reconnect; from a new client address to $USER1's live session it means someone took over an already-authenticated desktop."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is affected?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."},
+    {"id": "why", "type": "choice", "weight": 2,
+     "prompt": "Why is this dangerous even with no failed logins?",
+     "options": ["The attacker inherits $USER1's already-authenticated session and privileges without needing creds", "It generates thousands of alerts", "It only affects the lock screen", "It automatically expires in seconds"],
+     "answer": "The attacker inherits $USER1's already-authenticated session and privileges without needing creds",
+     "explain": "Hijacking a live session bypasses authentication entirely — the attacker operates as $USER1 with whatever that session already holds."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Whose session was taken over?",
+     "answer": ["$USER1"],
+     "explain": "accountName = $USER1 on the 4778 reconnect."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1563.002 Remote Service Session Hijacking: RDP Hijacking", "T1021.001 Remote Desktop Protocol", "T1110 Brute Force", "T1003 OS Credential Dumping"],
+     "answer": ["T1563.002 Remote Service Session Hijacking: RDP Hijacking", "T1021.001 Remote Desktop Protocol"],
+     "explain": "RDP session hijack (T1563.002) over RDP (T1021.001). No brute force or credential dump is involved."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Log off / terminate $USER1's session on $TARGET", "Isolate $TARGET and the source $SRC1", "Hunt for what the attacker did inside the hijacked session", "Review who has SYSTEM/tscon rights and restrict them", "Ignore — reconnects are always the same user"],
+     "answer": ["Log off / terminate $USER1's session on $TARGET", "Isolate $TARGET and the source $SRC1", "Hunt for what the attacker did inside the hijacked session", "Review who has SYSTEM/tscon rights and restrict them"],
+     "explain": "Kill the session, isolate both ends, hunt the in-session activity, and cut off the local-admin/SYSTEM path that allowed the tscon takeover."}
+  ]
+}

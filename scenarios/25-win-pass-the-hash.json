@@ -1,0 +1,59 @@
+{
+  "id": "win-pass-the-hash",
+  "title": "Pass-the-Hash Lateral Movement",
+  "difficulty": "advanced",
+  "duration_min": 14,
+  "briefing": "Host $TARGET recorded a SUCCESSFUL network logon (Event ID 4624, logon type 3) for $USER1 using the NTLM authentication package, coming from internal host $SRC1 — with keyLength 0 and no matching interactive logon on $SRC1. In an environment that is otherwise Kerberos, an NTLM network logon to a server is the classic Pass-the-Hash tell: the attacker replayed a stolen password hash without ever knowing the plaintext. Confirm it and scope the movement.",
+  "dashboard_hint": "Discover -> rule.id: 100135 (Pass-the-Hash) or 100134 (4624 type 3). Filter win.eventdata.authenticationPackageName: NTLM and win.eventdata.logonType: 3. The tell vs normal lateral movement is NTLM (not Kerberos) + keyLength 0. Correlate targetUserName = $USER1, ipAddress = $SRC1.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_pth", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [2, 4], "spacing": [1.0, 3.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Pass-the-Hash lateral movement",
+    "target": "$TARGET",
+    "mitre": "T1550.002",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What best describes this activity?",
+     "options": ["Pass-the-Hash — reused NTLM hash for lateral logon", "SSH brute force", "Kerberoasting", "Benign Kerberos ticket renewal"],
+     "answer": "Pass-the-Hash — reused NTLM hash for lateral logon",
+     "explain": "A successful NTLM type-3 logon (keyLength 0) from an internal host, in a Kerberos environment, is Pass-the-Hash: a stolen hash replayed without the plaintext."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is affected?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."},
+    {"id": "tell", "type": "choice", "weight": 2,
+     "prompt": "Which field is the strongest Pass-the-Hash indicator here?",
+     "options": ["authenticationPackageName = NTLM on a type-3 logon", "logonType = 10", "A preceding 4625 failure", "ticketEncryptionType = 0x17"],
+     "answer": "authenticationPackageName = NTLM on a type-3 logon",
+     "explain": "NTLM network logon to a server (where Kerberos is expected), keyLength 0, marks hash reuse rather than a real password auth."},
+    {"id": "srcip", "type": "text", "weight": 2,
+     "prompt": "Which internal host did the logon originate from?",
+     "answer": ["$SRC1"],
+     "explain": "win.eventdata.ipAddress = $SRC1 — the pivot host the attacker is operating from."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Which account's hash was replayed?",
+     "answer": ["$USER1"],
+     "explain": "targetUserName = $USER1 on the 4624 logon."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1550.002 Use Alternate Authentication Material: Pass the Hash", "T1021.002 SMB/Windows Admin Shares", "T1110 Brute Force", "T1558.003 Kerberoasting"],
+     "answer": ["T1550.002 Use Alternate Authentication Material: Pass the Hash", "T1021.002 SMB/Windows Admin Shares"],
+     "explain": "PtH (T1550.002) over a network logon commonly maps to admin-share lateral movement (T1021.002). No brute force or Kerberoast occurred."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Isolate $SRC1 (the pivot) and $TARGET", "Reset $USER1's password twice to clear cached NTLM hashes", "Hunt other hosts for NTLM type-3 logons by $USER1", "Enforce SMB signing and restrict NTLM", "Nothing — a successful logon is always benign"],
+     "answer": ["Isolate $SRC1 (the pivot) and $TARGET", "Reset $USER1's password twice to clear cached NTLM hashes", "Hunt other hosts for NTLM type-3 logons by $USER1", "Enforce SMB signing and restrict NTLM"],
+     "explain": "Treat the hash as compromised: isolate both ends, double-reset to invalidate the stolen hash, sweep for reuse elsewhere, and harden NTLM."}
+  ]
+}

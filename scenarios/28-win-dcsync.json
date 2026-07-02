@@ -1,0 +1,60 @@
+{
+  "id": "win-dcsync",
+  "title": "DCSync Credential Theft",
+  "difficulty": "advanced",
+  "duration_min": 16,
+  "briefing": "Domain controller $TARGET logged Event ID 4662 showing $USER1 requesting the directory-replication rights DS-Replication-Get-Changes (GUID 1131f6aa-9c07-11d1-f79f-00c04fc2dcd2) and -Get-Changes-All. $USER1 is not a domain controller. This is DCSync: an attacker with delegated/stolen privileges is asking AD to replicate secrets, letting them pull password hashes (including krbtgt) for any account without touching a DC's disk. Confirm the credential-theft attempt and its blast radius.",
+  "dashboard_hint": "Discover -> rule.id: 100138. Event ID 4662 where win.eventdata.properties contains the Replicating Directory Changes GUID (1131f6aa...). The red flag is that the requesting principal (subjectUserName) is a USER, not a DC machine account. Any non-DC principal replicating = DCSync.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_dcsync", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [1, 2], "spacing": [1.0, 3.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "DCSync credential theft",
+    "target": "$TARGET",
+    "mitre": "T1003.006",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 3,
+     "prompt": "What is this activity?",
+     "options": ["DCSync — replicating directory secrets to steal password hashes", "A normal DC-to-DC replication", "A brute-force attack", "A phishing email"],
+     "answer": "DCSync — replicating directory secrets to steal password hashes",
+     "explain": "A non-DC principal requesting DS-Replication-Get-Changes is DCSync: abusing AD replication to extract hashes, including krbtgt, for offline use."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is affected?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "The 4662 replication request lands on the domain controller $TARGET; the other hosts are unaffected."},
+    {"id": "tell", "type": "choice", "weight": 2,
+     "prompt": "What makes this malicious rather than routine replication?",
+     "options": ["The requester is a user account, not a domain controller machine account", "It happened at night", "It used TLS", "The event level is Information"],
+     "answer": "The requester is a user account, not a domain controller machine account",
+     "explain": "Only DCs legitimately replicate. A user (subjectUserName = $USER1) invoking Get-Changes-All is the DCSync signature."},
+    {"id": "impact", "type": "choice", "weight": 3,
+     "prompt": "What is the worst-case impact if this succeeded?",
+     "options": ["Full domain compromise — attacker can dump krbtgt and forge Golden Tickets", "One user's mailbox is exposed", "A single file server is down", "Nothing — replication is read-only"],
+     "answer": "Full domain compromise — attacker can dump krbtgt and forge Golden Tickets",
+     "explain": "DCSync can pull the krbtgt hash, enabling Golden Tickets and effectively persistent domain-wide access."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Which principal requested the replication?",
+     "answer": ["$USER1"],
+     "explain": "subjectUserName = $USER1 on the 4662 event."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1003.006 OS Credential Dumping: DCSync", "T1078 Valid Accounts", "T1110 Brute Force", "T1046 Network Service Discovery"],
+     "answer": ["T1003.006 OS Credential Dumping: DCSync", "T1078 Valid Accounts"],
+     "explain": "DCSync (T1003.006) performed with valid, over-privileged credentials (T1078). No brute force or scan."},
+    {"id": "containment", "type": "multi", "weight": 3,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Rotate krbtgt password twice (with a wait between)", "Reset $USER1 and audit who holds replication rights", "Force a domain-wide privileged-credential reset", "Hunt for Golden Ticket use (anomalous TGT lifetimes)", "Close the alert — replication is normal"],
+     "answer": ["Rotate krbtgt password twice (with a wait between)", "Reset $USER1 and audit who holds replication rights", "Force a domain-wide privileged-credential reset", "Hunt for Golden Ticket use (anomalous TGT lifetimes)"],
+     "explain": "Assume hashes (incl. krbtgt) are stolen: double-rotate krbtgt, reset the abusing account, strip unneeded replication rights, mass-reset privileged creds, and hunt for forged tickets."}
+  ]
+}

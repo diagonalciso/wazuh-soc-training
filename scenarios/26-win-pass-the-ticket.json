@@ -1,0 +1,55 @@
+{
+  "id": "win-pass-the-ticket",
+  "title": "Overpass-the-Hash / Pass-the-Ticket",
+  "difficulty": "advanced",
+  "duration_min": 14,
+  "briefing": "On $TARGET a logon was recorded for $USER1 with logon type 9 (NewCredentials) via the seclogo logon process and runas.exe as the parent — the pattern produced by runas /netonly and by Mimikatz/Rubeus injecting a Kerberos ticket into a new logon session (overpass-the-hash / Pass-the-Ticket). The session is authenticating outward with credentials the attacker supplied, not the interactive user's. Identify the technique and why it is not a normal interactive logon.",
+  "dashboard_hint": "Discover -> rule.id: 100136. Filter win.eventdata.logonType: 9 and win.eventdata.logonProcessName: seclogo. Type 9 means the session runs with explicit alternate credentials — a hallmark of ticket/hash injection. Correlate targetUserName = $USER1 on $TARGET.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_ptt", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": [1, 2], "spacing": [1.0, 3.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Pass-the-Ticket / overpass-the-hash",
+    "target": "$TARGET",
+    "mitre": "T1550.003",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "What does a type-9 (NewCredentials/seclogo) logon indicate here?",
+     "options": ["Alternate credentials injected into a session — overpass/Pass-the-Ticket", "A failed RDP login", "Normal interactive desktop logon", "An account lockout"],
+     "answer": "Alternate credentials injected into a session — overpass/Pass-the-Ticket",
+     "explain": "Type 9 runs the session under explicit alternate creds (runas /netonly, or a Kerberos ticket injected by Rubeus/Mimikatz) — the attacker's material, not the console user's."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is affected?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."},
+    {"id": "diff", "type": "choice", "weight": 2,
+     "prompt": "How does this differ from Pass-the-Hash (100135)?",
+     "options": ["It reuses a Kerberos ticket / alternate creds (type 9) rather than replaying an NTLM hash on a network logon", "It is a brute force", "It only affects Linux", "It is a web exploit"],
+     "answer": "It reuses a Kerberos ticket / alternate creds (type 9) rather than replaying an NTLM hash on a network logon",
+     "explain": "PtH replays an NTLM hash (type 3, NTLM). Overpass/PtT injects a ticket into a new-credentials session (type 9, seclogo)."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Which account was impersonated?",
+     "answer": ["$USER1"],
+     "explain": "targetUserName = $USER1 on the type-9 logon."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1550.003 Pass the Ticket", "T1550.002 Pass the Hash", "T1078 Valid Accounts", "T1486 Data Encrypted for Impact"],
+     "answer": ["T1550.003 Pass the Ticket", "T1078 Valid Accounts"],
+     "explain": "Ticket reuse (T1550.003) using valid-but-stolen credentials (T1078). No hash replay or encryption here."},
+    {"id": "containment", "type": "multi", "weight": 2,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Reset $USER1 and, if a TGT was forged, rotate the krbtgt password twice", "Hunt for Rubeus/Mimikatz execution on the source host", "Isolate $TARGET and review its outbound authentications", "Assume any session opened by $USER1 may be attacker-controlled", "Ignore — type 9 logons are always benign"],
+     "answer": ["Reset $USER1 and, if a TGT was forged, rotate the krbtgt password twice", "Hunt for Rubeus/Mimikatz execution on the source host", "Isolate $TARGET and review its outbound authentications", "Assume any session opened by $USER1 may be attacker-controlled"],
+     "explain": "Ticket injection means the credential is already stolen: rotate it (and krbtgt twice if a golden/forged TGT is suspected), hunt the tooling, and distrust the session."}
+  ]
+}
