@@ -53,7 +53,25 @@ vagrant up                     # libvirt/KVM or VirtualBox; >=4GB RAM (LAB_MEM_M
 # training   http://192.168.56.20:8101
 ```
 
-This is a **normal** VM (not nested), so it runs anywhere a hypervisor does.
+This is a **normal** VM (not nested), so it runs anywhere a hypervisor does. The
+repo is synced into the VM over **rsync** (`type: "rsync"` in the `Vagrantfile`),
+which needs `rsync` on the host — the libvirt default synced-folder (9p/virtiofs)
+isn't wired up on a bare host, so `/vagrant` would otherwise be empty.
+
+> **Ubuntu 24.04 host:** Vagrant was dropped from the `universe` repo, so
+> `apt install vagrant` finds nothing. Install it from HashiCorp's apt repo:
+> ```bash
+> wget -O- https://apt.releases.hashicorp.com/gpg | \
+>   sudo tee /usr/share/keyrings/hashicorp-archive-keyring.asc >/dev/null
+> echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.asc] \
+>   https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+>   sudo tee /etc/apt/sources.list.d/hashicorp.list
+> sudo apt update && sudo apt install vagrant
+> ```
+> For the libvirt provider also install its build deps before
+> `vagrant plugin install vagrant-libvirt`:
+> `sudo apt install libvirt-dev ruby-dev build-essential libxml2-dev`. If your
+> shell isn't yet in the `libvirt` group, run vagrant via `sg libvirt -c "vagrant up"`.
 
 ---
 
