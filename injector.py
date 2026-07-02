@@ -464,7 +464,8 @@ def _emit_scenario(run_id, scenario, agents):
         count = int(st.get("count", 1))
         spacing = st.get("spacing", [3, 10])
         for _ in range(count):
-            ip = random.choice([i for i in ips if i]) or "10.10.0.9"
+            _ipl = [i for i in ips if i]
+            ip = random.choice(_ipl) if _ipl else "10.10.0.9"
             location, raw = _line(template, ip, st, agent_name)
             try:
                 inj.send(agent_id, agent_name, location, raw)
