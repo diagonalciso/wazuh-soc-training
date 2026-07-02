@@ -1,0 +1,235 @@
+{
+  "id": "linux-full-breach",
+  "title": "Full Breach Kill-Chain (Linux capstone)",
+  "difficulty": "advanced",
+  "duration_min": 22,
+  "briefing": "Capstone. $TARGET went from a stolen-credential SSH login for $USER1 (from $SRC1) all the way through the kill chain in one window: privilege escalation, a persistent backdoor key, a downloaded payload, an outbound reverse shell, and finally a system-log wipe to cover tracks. Reconstruct the whole chain, order it, and produce a containment plan that leaves the attacker no way back in.",
+  "dashboard_hint": "agent.name: $TARGET, sort by @timestamp. Expect: 5715 login -> 5402/5403 sudo -> 100210 authorized_keys implant -> 100212 payload download -> 100211 reverse shell -> 100214 log tamper. Read full_log on every 1002xx alert. Note the log wipe is LAST — classic cleanup after objectives; trust the forwarded copy, not the host.",
+  "randomize": {
+    "ips": {
+      "SRC1": "bruteforce"
+    },
+    "users": {
+      "USER1": "linux"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
+  },
+  "inject": {
+    "steps": [
+      {
+        "template": "linux_ssh_accepted",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          2.0,
+          3.0
+        ]
+      },
+      {
+        "template": "linux_sudo_root",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      },
+      {
+        "template": "linux_authkey",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      },
+      {
+        "template": "linux_download_exec",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      },
+      {
+        "template": "linux_revshell",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      },
+      {
+        "template": "linux_log_tamper",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      }
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Full-chain breach (valid creds to impact)",
+    "target": "$TARGET",
+    "mitre": "T1078",
+    "severity": "Critical"
+  },
+  "questions": [
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "Best overall characterisation?",
+      "options": [
+        "Full-chain intrusion: credential access -> privesc -> persistence -> C2 -> anti-forensics",
+        "Isolated brute-force attempt",
+        "Routine patching",
+        "Single phishing click"
+      ],
+      "answer": "Full-chain intrusion: credential access -> privesc -> persistence -> C2 -> anti-forensics",
+      "explain": "Login, sudo, key implant, download, reverse shell, log wipe = a complete kill chain from valid creds to cleanup."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is affected?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."
+    },
+    {
+      "id": "stages",
+      "type": "multi",
+      "weight": 3,
+      "prompt": "Which stages occurred on $TARGET? (select all)",
+      "options": [
+        "Valid-credential SSH login",
+        "Privilege escalation (sudo to root)",
+        "Persistence via backdoor SSH key",
+        "Tool download and execution",
+        "Reverse shell / C2",
+        "System log tampering",
+        "Ransomware encryption"
+      ],
+      "answer": [
+        "Valid-credential SSH login",
+        "Privilege escalation (sudo to root)",
+        "Persistence via backdoor SSH key",
+        "Tool download and execution",
+        "Reverse shell / C2",
+        "System log tampering"
+      ],
+      "explain": "All six injected stages are present; no encryption/ransomware stage occurred."
+    },
+    {
+      "id": "order",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "Where in the chain did the log wipe occur?",
+      "options": [
+        "Last — cleanup after objectives were met",
+        "First — before the login",
+        "It did not occur",
+        "Between the login and the sudo"
+      ],
+      "answer": "Last — cleanup after objectives were met",
+      "explain": "Anti-forensics comes last: establish access and objectives, then wipe evidence. It is the final event in the window."
+    },
+    {
+      "id": "persist",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "You kill the reverse shell and reset $USER1. Is the attacker out?",
+      "options": [
+        "No — the backdoor authorized_keys entry still grants root-capable access",
+        "Yes — killing the shell ends it",
+        "Yes — the password reset covers everything",
+        "No — but only the download matters"
+      ],
+      "answer": "No — the backdoor authorized_keys entry still grants root-capable access",
+      "explain": "The implanted key is independent persistence; it must be removed or the attacker simply logs back in."
+    },
+    {
+      "id": "mitre",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which MITRE techniques apply? (select all)",
+      "options": [
+        "T1078 Valid Accounts",
+        "T1548.003 Sudo",
+        "T1098.004 SSH Authorized Keys",
+        "T1105 Ingress Tool Transfer",
+        "T1059.004 Unix Shell",
+        "T1070.002 Clear Linux System Logs"
+      ],
+      "answer": [
+        "T1078 Valid Accounts",
+        "T1548.003 Sudo",
+        "T1098.004 SSH Authorized Keys",
+        "T1105 Ingress Tool Transfer",
+        "T1059.004 Unix Shell",
+        "T1070.002 Clear Linux System Logs"
+      ],
+      "explain": "Every stage maps to its technique across the chain — all six apply."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 3,
+      "prompt": "Containment plan (select all that apply):",
+      "options": [
+        "Isolate $TARGET immediately",
+        "Cut the C2 destination and block $SRC1",
+        "Remove the implanted authorized_keys entry and audit all keys/accounts",
+        "Rotate $USER1 and all secrets exposed on the host",
+        "Rely on the forwarded SIEM logs, not the wiped host logs",
+        "Preserve a forensic image before remediation"
+      ],
+      "answer": [
+        "Isolate $TARGET immediately",
+        "Cut the C2 destination and block $SRC1",
+        "Remove the implanted authorized_keys entry and audit all keys/accounts",
+        "Rotate $USER1 and all secrets exposed on the host",
+        "Rely on the forwarded SIEM logs, not the wiped host logs",
+        "Preserve a forensic image before remediation"
+      ],
+      "explain": "Root was reached, persistence planted, and logs wiped — isolate, cut C2, remove every foothold, rotate all exposed secrets, trust off-host evidence, and image for IR."
+    }
+  ]
+}

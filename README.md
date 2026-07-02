@@ -86,7 +86,7 @@ network attacks, that `srcip` is decoded) before wiring it into a scenario.
 
 ## Scenarios
 
-18 drills across three levels; the tool serves a random one at the chosen level.
+24 drills across three levels; the tool serves a random one at the chosen level.
 Titles are hidden from the trainee (shown only at debrief).
 
 **Linux / web** (stock rules 5710/5716/31106):
@@ -116,6 +116,24 @@ Titles are hidden from the trainee (shown only at debrief).
 | `scenarios/16-win-ransomware-preencryption.json` | advanced | Sysmon 1 + 11 | shadow-copy delete + mass rewrite, T1486 / T1490 |
 | `scenarios/17-win-c2-beacon.json` | advanced | Sysmon 3 | periodic C2 beacon, T1071.001 |
 | `scenarios/18-win-lateral-log-cleared.json` | advanced | 4624 type 3 + 1102 | lateral movement + log wipe, T1021 / T1070.001 |
+
+**Linux assume-breach** (adversary already inside via stolen creds / valid
+sessions — stock rules 5715/5402-5403/5902 + custom pack 100209–100215, Linux
+agents only):
+
+| File | Level | Event(s) | Teaches |
+|------|-------|----------|---------|
+| `scenarios/19-linux-stolen-cred-login.json` | intermediate | 5715 (Accepted password) | valid-account abuse vs brute force — a clean success with no failures, T1078 |
+| `scenarios/20-linux-hands-on-keyboard.json` | advanced | 5715 → 5402/5403 → 100212 → 100211 | live operator: login → sudo → download → reverse shell, T1078/T1548/T1105/T1059.004 |
+| `scenarios/21-linux-persistence-implant.json` | advanced | 5715 + 5902 + 100210 + 100215 | three footholds (rogue user, backdoor key, cron); why a password reset isn't enough, T1136/T1098.004/T1053.003 |
+| `scenarios/22-linux-antiforensics.json` | advanced | 5715 + 100213 + 100214 | history + system-log wiping; local logs untrusted, pivot to forwarded copy, T1070.003/.002 |
+| `scenarios/23-linux-lateral-session.json` | advanced | 5715 (internal srcip) + 5402/5403 | east-west movement with a reused key; internal RFC1918 source is the tell, T1021.004 |
+| `scenarios/24-linux-full-breach.json` | advanced | full 5715→5402/5403→100210→100212→100211→100214 chain | capstone: credential access to anti-forensics; complete eviction plan, T1078→T1070.002 |
+
+The post-exploitation on-host commands (reverse shell, log wipe, key implant,
+cron) have no reliable stock rule, so they are injected as `snoopy` command-audit
+lines and matched by the training pack on `full_log` — the command itself is the
+evidence the analyst reads.
 
 A scenario is one JSON file: `briefing`, `dashboard_hint`, `inject.steps`
 (template + agent + srcips + count/pacing), `ground_truth`, `questions`

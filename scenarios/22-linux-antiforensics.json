@@ -1,0 +1,180 @@
+{
+  "id": "linux-antiforensics",
+  "title": "Anti-Forensics / Log Wipe (Linux)",
+  "difficulty": "advanced",
+  "duration_min": 14,
+  "briefing": "$USER1 logged into $TARGET from $SRC1, then the shell history was destroyed and a system log file was truncated/deleted. The attacker is covering their tracks. Recognise the anti-forensics, and understand what it means for the rest of your investigation.",
+  "dashboard_hint": "agent.name: $TARGET. rule.id 5715 (login) then 100213 (history tampering) and 100214 (/var/log/... tampering). The very fact these events reached the SIEM is because Wazuh forwards logs OFF the host in real time — the attacker wiped the LOCAL copy but not the forwarded one. Do not trust the host's on-disk logs from here.",
+  "randomize": {
+    "ips": {
+      "SRC1": "bruteforce"
+    },
+    "users": {
+      "USER1": "linux"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
+  },
+  "inject": {
+    "steps": [
+      {
+        "template": "linux_ssh_accepted",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          2.0,
+          4.0
+        ]
+      },
+      {
+        "template": "linux_hist_wipe",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.5
+        ]
+      },
+      {
+        "template": "linux_log_tamper",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": [
+          1,
+          2
+        ],
+        "spacing": [
+          1.0,
+          2.5
+        ]
+      }
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Defense evasion / anti-forensics",
+    "target": "$TARGET",
+    "mitre": "T1070.002",
+    "severity": "High"
+  },
+  "questions": [
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "What is the attacker's intent here?",
+      "options": [
+        "Anti-forensics — destroying evidence of their activity",
+        "Backing up logs for safekeeping",
+        "Rotating logs on schedule",
+        "Brute forcing SSH"
+      ],
+      "answer": "Anti-forensics — destroying evidence of their activity",
+      "explain": "Wiping shell history and truncating system logs is deliberate evidence destruction (defense evasion)."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is affected?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."
+    },
+    {
+      "id": "signals",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which actions signal track-covering? (select all)",
+      "options": [
+        "Shell history cleared/redirected to /dev/null",
+        "System log file truncated/deleted",
+        "Accepted password login",
+        "A scheduled cron backup"
+      ],
+      "answer": [
+        "Shell history cleared/redirected to /dev/null",
+        "System log file truncated/deleted"
+      ],
+      "explain": "History tampering (100213) and /var/log tampering (100214) are the anti-forensic actions; the login itself is not."
+    },
+    {
+      "id": "trust",
+      "type": "choice",
+      "weight": 3,
+      "prompt": "What does the log wipe mean for your investigation?",
+      "options": [
+        "The host's local logs are now untrustworthy — pivot to the forwarded SIEM/central copy",
+        "The investigation is over; there is no evidence left",
+        "The logs will restore themselves",
+        "Nothing — local logs are always complete"
+      ],
+      "answer": "The host's local logs are now untrustworthy — pivot to the forwarded SIEM/central copy",
+      "explain": "You only see these events because Wazuh already forwarded them. Treat on-host logs as tampered and rely on the central copy."
+    },
+    {
+      "id": "account",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Which account performed the wipe?",
+      "answer": [
+        "$USER1"
+      ],
+      "explain": "All the tampering commands ran under $USER1's session."
+    },
+    {
+      "id": "mitre",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which MITRE techniques apply? (select all)",
+      "options": [
+        "T1070.003 Clear Command History",
+        "T1070.002 Clear Linux or Mac System Logs",
+        "T1078 Valid Accounts",
+        "T1558.003 Kerberoasting"
+      ],
+      "answer": [
+        "T1070.003 Clear Command History",
+        "T1070.002 Clear Linux or Mac System Logs",
+        "T1078 Valid Accounts"
+      ],
+      "explain": "History wipe (T1070.003), system-log wipe (T1070.002), and the valid-account login (T1078). Kerberoasting is Windows/AD and absent."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Response (select all that apply):",
+      "options": [
+        "Preserve/collect the forwarded logs before they age out",
+        "Isolate $TARGET and image it for forensics",
+        "Rotate $USER1 and hunt for what the history wipe was hiding",
+        "Assume the host is fully compromised",
+        "Close the alert — the logs are gone so there's nothing to do"
+      ],
+      "answer": [
+        "Preserve/collect the forwarded logs before they age out",
+        "Isolate $TARGET and image it for forensics",
+        "Rotate $USER1 and hunt for what the history wipe was hiding",
+        "Assume the host is fully compromised"
+      ],
+      "explain": "Anti-forensics raises confidence of compromise: preserve the off-host evidence, isolate/image, rotate creds, and hunt for the activity the wipe was meant to hide."
+    }
+  ]
+}

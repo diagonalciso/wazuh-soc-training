@@ -1,0 +1,160 @@
+{
+  "id": "linux-lateral-session",
+  "title": "Lateral Movement with Stolen Session (Linux)",
+  "difficulty": "advanced",
+  "duration_min": 15,
+  "briefing": "$TARGET accepted an SSH public-key login for $USER1 from $SRC1 — but $SRC1 is another INTERNAL host, not the internet. Moments later the session escalated to root. An adversary who already owns one box is pivoting east-west with a reused key/session. Confirm the lateral movement and scope how far it may have spread.",
+  "dashboard_hint": "rule.id 5715 with data.srcip in RFC1918 space ($SRC1 is internal) landing on $TARGET, then 5402/5403 (sudo to root, group sudo). Internal-to-internal successful auth is normal for admins but suspicious off-hours from a host that has no business SSHing here. Correlate: is $SRC1 itself already flagged? Where else has $USER1 logged in from $SRC1?",
+  "randomize": {
+    "ips": {
+      "SRC1": "internal"
+    },
+    "users": {
+      "USER1": "linux"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
+  },
+  "inject": {
+    "steps": [
+      {
+        "template": "linux_ssh_pubkey",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": [
+          1,
+          2
+        ],
+        "spacing": [
+          2.0,
+          5.0
+        ]
+      },
+      {
+        "template": "linux_sudo_root",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.0
+        ]
+      }
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Lateral movement (internal, valid session)",
+    "target": "$TARGET",
+    "mitre": "T1021.004",
+    "severity": "High"
+  },
+  "questions": [
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "What is happening?",
+      "options": [
+        "Lateral movement — an internal host pivoting to $TARGET with valid creds",
+        "External brute force",
+        "A user resetting their own password",
+        "Outbound data exfiltration"
+      ],
+      "answer": "Lateral movement — an internal host pivoting to $TARGET with valid creds",
+      "explain": "A successful SSH key login sourced from an internal RFC1918 host, then root, is east-west movement using stolen/reused credentials."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is affected?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."
+    },
+    {
+      "id": "tell",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "What is the key tell that this is lateral movement, not internet-facing attack?",
+      "options": [
+        "The source IP is an internal RFC1918 address, not external",
+        "The login failed",
+        "It targeted a Windows DC",
+        "It came over HTTP"
+      ],
+      "answer": "The source IP is an internal RFC1918 address, not external",
+      "explain": "data.srcip is a private/internal address — the attacker is already inside and hopping between hosts."
+    },
+    {
+      "id": "srcip",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Internal host the login came from (the pivot)?",
+      "answer": [
+        "$SRC1"
+      ],
+      "explain": "data.srcip = $SRC1, the internal pivot host — itself likely compromised."
+    },
+    {
+      "id": "account",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Which account moved laterally?",
+      "answer": [
+        "$USER1"
+      ],
+      "explain": "data.dstuser = $USER1 on the accepted publickey login."
+    },
+    {
+      "id": "mitre",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which MITRE techniques apply? (select all)",
+      "options": [
+        "T1021.004 Remote Services: SSH",
+        "T1078 Valid Accounts",
+        "T1548.003 Sudo",
+        "T1190 Exploit Public-Facing Application"
+      ],
+      "answer": [
+        "T1021.004 Remote Services: SSH",
+        "T1078 Valid Accounts",
+        "T1548.003 Sudo"
+      ],
+      "explain": "SSH lateral movement, valid-account use, and sudo privesc. No public-facing exploit is involved — the actor is already internal."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Response (select all that apply):",
+      "options": [
+        "Investigate and isolate the pivot host $SRC1 too",
+        "Isolate $TARGET",
+        "Revoke $USER1's SSH keys everywhere and rotate the account",
+        "Hunt every host $USER1/$SRC1 has authenticated to",
+        "Only block external firewall ingress"
+      ],
+      "answer": [
+        "Investigate and isolate the pivot host $SRC1 too",
+        "Isolate $TARGET",
+        "Revoke $USER1's SSH keys everywhere and rotate the account",
+        "Hunt every host $USER1/$SRC1 has authenticated to"
+      ],
+      "explain": "Both ends are suspect. Scope the blast radius by following the account and the pivot host across the fleet; external firewall rules do nothing against east-west movement."
+    }
+  ]
+}

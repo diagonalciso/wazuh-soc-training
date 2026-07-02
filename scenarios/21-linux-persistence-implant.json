@@ -1,0 +1,192 @@
+{
+  "id": "linux-persistence-implant",
+  "title": "Persistence Implant After Breach (Linux)",
+  "difficulty": "advanced",
+  "duration_min": 16,
+  "briefing": "After a valid-credential login for $USER1 on $TARGET from $SRC1, three things happened on the host: a new local account was created, an SSH key was written to an authorized_keys file, and a cron job was installed. The attacker is nailing down persistent access. Identify every persistence mechanism so none are missed during eviction.",
+  "dashboard_hint": "agent.name: $TARGET. rule.id 5715 (login) then 5902 (new user), 100210 (authorized_keys implant), 100215 (cron). Read full_log on the 1002xx alerts. Each is an INDEPENDENT foothold — miss one and the attacker walks back in after you reset the password.",
+  "randomize": {
+    "ips": {
+      "SRC1": "bruteforce"
+    },
+    "users": {
+      "USER1": "linux"
+    },
+    "targets": {
+      "TARGET": {
+        "question": "target",
+        "os": "linux"
+      }
+    }
+  },
+  "inject": {
+    "steps": [
+      {
+        "template": "linux_ssh_accepted",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          2.0,
+          4.0
+        ]
+      },
+      {
+        "template": "linux_useradd",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.5
+        ]
+      },
+      {
+        "template": "linux_authkey",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.5
+        ]
+      },
+      {
+        "template": "linux_cron_persist",
+        "agent": "$TARGET",
+        "srcips": [
+          "$SRC1"
+        ],
+        "user": "$USER1",
+        "count": 1,
+        "spacing": [
+          1.0,
+          2.5
+        ]
+      }
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Post-compromise persistence",
+    "target": "$TARGET",
+    "mitre": "T1098.004",
+    "severity": "High"
+  },
+  "questions": [
+    {
+      "id": "type",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "What is the attacker doing on $TARGET?",
+      "options": [
+        "Establishing multiple persistence footholds",
+        "Running a brute force",
+        "Scanning the subnet",
+        "Exfiltrating a database"
+      ],
+      "answer": "Establishing multiple persistence footholds",
+      "explain": "New account + backdoor SSH key + cron job are three independent persistence mechanisms."
+    },
+    {
+      "id": "target",
+      "type": "choice",
+      "weight": 1,
+      "prompt": "Which host is affected?",
+      "options": [
+        "$TARGET"
+      ],
+      "answer": "$TARGET",
+      "explain": "All of the activity lands on $TARGET; the other hosts are unaffected."
+    },
+    {
+      "id": "mechanisms",
+      "type": "multi",
+      "weight": 3,
+      "prompt": "Which persistence mechanisms were used? (select all)",
+      "options": [
+        "New local user account",
+        "Backdoor key in authorized_keys",
+        "Cron job",
+        "Windows service install",
+        "Registry Run key"
+      ],
+      "answer": [
+        "New local user account",
+        "Backdoor key in authorized_keys",
+        "Cron job"
+      ],
+      "explain": "5902 new user, 100210 authorized_keys implant, 100215 cron. The Windows options do not apply to a Linux host."
+    },
+    {
+      "id": "reset",
+      "type": "choice",
+      "weight": 2,
+      "prompt": "You reset $USER1's password. Is the attacker locked out?",
+      "options": [
+        "No — the backdoor key, rogue account and cron job all still grant access",
+        "Yes — a password reset fully evicts them",
+        "Yes — cron jobs expire automatically",
+        "No — but only because of the cron job"
+      ],
+      "answer": "No — the backdoor key, rogue account and cron job all still grant access",
+      "explain": "Each foothold is independent of $USER1's password. Full eviction means removing the rogue user, the implanted key, AND the cron job."
+    },
+    {
+      "id": "account",
+      "type": "text",
+      "weight": 1,
+      "prompt": "Which account did the attacker log in as to plant persistence?",
+      "answer": [
+        "$USER1"
+      ],
+      "explain": "The 5715 login and subsequent commands ran as $USER1."
+    },
+    {
+      "id": "mitre",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Which MITRE techniques apply? (select all)",
+      "options": [
+        "T1136.001 Create Account: Local Account",
+        "T1098.004 SSH Authorized Keys",
+        "T1053.003 Scheduled Task/Job: Cron",
+        "T1486 Data Encrypted for Impact"
+      ],
+      "answer": [
+        "T1136.001 Create Account: Local Account",
+        "T1098.004 SSH Authorized Keys",
+        "T1053.003 Scheduled Task/Job: Cron"
+      ],
+      "explain": "Account creation, authorized_keys, and cron — three persistence sub-techniques. No impact/encryption occurred."
+    },
+    {
+      "id": "containment",
+      "type": "multi",
+      "weight": 2,
+      "prompt": "Eviction actions (select all that apply):",
+      "options": [
+        "Remove the rogue account",
+        "Remove the implanted authorized_keys entry",
+        "Remove the malicious cron job",
+        "Rotate $USER1 and audit all keys/accounts on the host",
+        "Only reset $USER1's password"
+      ],
+      "answer": [
+        "Remove the rogue account",
+        "Remove the implanted authorized_keys entry",
+        "Remove the malicious cron job",
+        "Rotate $USER1 and audit all keys/accounts on the host"
+      ],
+      "explain": "Pull every foothold and audit the host; a password reset alone leaves three ways back in."
+    }
+  ]
+}

@@ -252,4 +252,78 @@
     <options>no_full_log</options>
   </rule>
 
+  <!-- ============================================ Linux post-compromise -->
+  <!--
+    Assume-breach drills: an adversary already inside via stolen creds / a
+    valid session. Successful auth (Accepted password/publickey), sudo and
+    useradd are already covered by STOCK rules (5715 / 5402 / 5902) via the
+    built-in sshd/sudo/useradd decoders — the injector emits those directly
+    and the scenarios reference the stock rule ids.
+
+    On-host command activity (reverse shells, log wiping, key implants, cron
+    persistence) has no reliable stock rule, so the injector emits it as
+    `snoopy` command-audit lines (authpriv). No stock decoder parses snoopy,
+    so we match the raw command in full_log with <match>. These rules DELIBER-
+    ATELY keep full_log (no no_full_log) — the command IS the evidence the
+    analyst reads. Verify with wazuh-logtest. ID range 100209-100219.
+  -->
+  <rule id="100209" level="0">
+    <program_name>snoopy</program_name>
+    <description>Training: audited shell command (injected)</description>
+  </rule>
+
+  <!-- SSH authorized_keys implant (backdoor key for persistent access). -->
+  <rule id="100210" level="8">
+    <if_sid>100209</if_sid>
+    <match>authorized_keys</match>
+    <description>Training: SSH authorized_keys modified — backdoor key implant</description>
+    <group>training_lin_persistence,</group>
+    <mitre><id>T1098.004</id></mitre>
+  </rule>
+
+  <!-- Reverse shell / interactive C2 channel from the host. -->
+  <rule id="100211" level="10">
+    <if_sid>100209</if_sid>
+    <match>/dev/tcp/|mkfifo |nc -e|ncat -e| -e /bin/|socat TCP</match>
+    <description>Training: Reverse shell / C2 channel opened from host</description>
+    <group>training_lin_c2,</group>
+    <mitre><id>T1059.004</id></mitre>
+  </rule>
+
+  <!-- Remote tool download piped straight to a shell (ingress + exec). -->
+  <rule id="100212" level="8">
+    <if_sid>100209</if_sid>
+    <match>curl |wget </match>
+    <description>Training: Remote payload downloaded and executed (tool ingress)</description>
+    <group>training_lin_ingress,</group>
+    <mitre><id>T1105</id></mitre>
+  </rule>
+
+  <!-- Shell history destruction (anti-forensics). -->
+  <rule id="100213" level="8">
+    <if_sid>100209</if_sid>
+    <match>bash_history|history -c|HISTFILE|shred </match>
+    <description>Training: Shell history tampered/cleared (anti-forensics)</description>
+    <group>training_lin_evasion,</group>
+    <mitre><id>T1070.003</id></mitre>
+  </rule>
+
+  <!-- System log tampering / deletion (anti-forensics). -->
+  <rule id="100214" level="10">
+    <if_sid>100209</if_sid>
+    <match>/var/log/</match>
+    <description>Training: System log file tampered/deleted on host (anti-forensics)</description>
+    <group>training_lin_evasion,</group>
+    <mitre><id>T1070.002</id></mitre>
+  </rule>
+
+  <!-- Cron-based persistence. -->
+  <rule id="100215" level="7">
+    <if_sid>100209</if_sid>
+    <match>/etc/cron|crontab </match>
+    <description>Training: Cron persistence established on host</description>
+    <group>training_lin_persistence,</group>
+    <mitre><id>T1053.003</id></mitre>
+  </rule>
+
 </group>

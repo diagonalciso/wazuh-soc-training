@@ -53,6 +53,12 @@ IP_POOLS = {
         "91.219.236.166", "23.106.223.44", "146.70.199.11",
         "194.165.16.9", "212.192.246.30", "179.43.187.100",
     ],
+    # Internal RFC1918 hosts — an already-inside actor moving east-west with
+    # stolen creds (lateral movement between endpoints, not an external scan).
+    "internal": [
+        "10.10.0.21", "10.10.0.22", "10.10.0.35", "10.10.2.14",
+        "192.168.20.15", "192.168.20.41", "172.16.8.30", "10.0.5.12",
+    ],
 }
 
 # Windows account pools for AD-flavoured scenarios (kerberoast targets, rogue
@@ -60,6 +66,10 @@ IP_POOLS = {
 USER_POOL = ["administrator", "jsmith", "adunn", "mwallace", "kperry",
              "operator", "helpdesk", "sqladmin", "backup_adm", "rsmith",
              "tgordon", "lchen", "pnovak", "svc_task", "hr_admin"]
+# Linux/service account names for assume-breach drills (stolen SSH creds).
+LINUX_USER_POOL = ["deploy", "ubuntu", "ansible", "jenkins", "gitlab-runner",
+                   "svc_ci", "backup", "oracle", "postgres", "www-data",
+                   "dbadmin", "ec2-user", "appsvc", "monitoring", "devops"]
 SVC_POOL = ["svc_sql", "svc_web", "MSSQLSvc", "svc_backup", "svc_share",
             "svc_ldap", "svc_report", "http_svc", "svc_jenkins", "svc_vc"]
 
@@ -114,10 +124,12 @@ def materialize(template, agents, agent_os=None):
         used_ips.add(ip)
         mapping[token] = ip
 
-    # Windows usernames: token -> distinct account from USER_POOL.
+    # Account names: token -> distinct account. Value selects the pool:
+    # "linux" -> LINUX_USER_POOL (stolen SSH creds); anything else -> Windows.
     used_users = set()
-    for token in rz.get("users", {}):
-        u = _pick_distinct(USER_POOL, 1, used_users)[0]
+    for token, kind in rz.get("users", {}).items():
+        pool = LINUX_USER_POOL if kind == "linux" else USER_POOL
+        u = _pick_distinct(pool, 1, used_users)[0]
         used_users.add(u)
         mapping[token] = u
 
