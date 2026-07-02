@@ -1,0 +1,61 @@
+{
+  "id": "win-persistence-evasion",
+  "title": "Scheduled-Task Persistence + Defender Kill",
+  "difficulty": "intermediate",
+  "duration_min": 14,
+  "briefing": "$TARGET logged Event ID 4698 — $USER1 created a scheduled task under a legit-looking path (\\Microsoft\\Windows\\UpdateOrchestrator\\...) whose action is an encoded PowerShell command. Moments later Windows Defender raised EID 5001: real-time protection was turned off on the same host. Together these are an attacker nailing down persistence and then blinding the endpoint's AV so the payload runs unimpeded. Confirm both, tie them to one actor, and decide what to trust on this host.",
+  "dashboard_hint": "Discover -> agent.name: $TARGET. rule.id: 100139 is the 4698 task-create (read win.eventdata.taskName and taskContent — the encoded -enc powershell is the tell). rule.id: 100170 is the 5001 Defender-disabled event. Same host, back-to-back = persistence + defense evasion by one actor. A masquerading task path (UpdateOrchestrator) hiding an encoded command is not a real Windows update.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_schtask", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 2.0]},
+      {"template": "win_defender_off", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 3.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Persistence (scheduled task) + defense evasion (Defender disabled)",
+    "target": "$TARGET",
+    "mitre": "T1053.005",
+    "severity": "High"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 3,
+     "prompt": "What is this activity?",
+     "options": ["Persistence via scheduled task plus Defender being disabled to evade AV", "A legitimate Windows Update installing", "A brute-force attack", "An outbound DDoS"],
+     "answer": "Persistence via scheduled task plus Defender being disabled to evade AV",
+     "explain": "A scheduled task running encoded PowerShell (persistence) immediately followed by real-time protection being switched off (defense evasion) is an attacker entrenching and blinding the host."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host is affected?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "Both the 4698 and the Defender 5001 events land on $TARGET; other hosts are unaffected."},
+    {"id": "tell", "type": "choice", "weight": 2,
+     "prompt": "What makes the scheduled task suspicious rather than a real update?",
+     "options": ["It masquerades under an update path but runs an encoded PowerShell command", "It runs once a day", "It has a description field", "It was created by SYSTEM"],
+     "answer": "It masquerades under an update path but runs an encoded PowerShell command",
+     "explain": "Legit Windows update tasks don't launch base64 -enc PowerShell. The UpdateOrchestrator path is masquerading (T1036) to blend in."},
+    {"id": "evasion", "type": "choice", "weight": 2,
+     "prompt": "Why disable Defender right after creating the task?",
+     "options": ["So the payload the task runs isn't detected or blocked by AV", "To speed up the computer", "To install updates faster", "Defender turning off is unrelated"],
+     "answer": "So the payload the task runs isn't detected or blocked by AV",
+     "explain": "Killing real-time protection (T1562.001) lets the persistence payload execute without AV interference — the two actions are one operation."},
+    {"id": "account", "type": "text", "weight": 1,
+     "prompt": "Which account created the scheduled task?",
+     "answer": ["$USER1"],
+     "explain": "subjectUserName = $USER1 on the 4698 event."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1053.005 Scheduled Task", "T1562.001 Impair Defenses: Disable or Modify Tools", "T1036 Masquerading", "T1110 Brute Force"],
+     "answer": ["T1053.005 Scheduled Task", "T1562.001 Impair Defenses: Disable or Modify Tools", "T1036 Masquerading"],
+     "explain": "Scheduled-task persistence (T1053.005), disabling Defender (T1562.001), and the fake update path (T1036). No brute force."},
+    {"id": "containment", "type": "multi", "weight": 3,
+     "prompt": "Response actions (select all that apply):",
+     "options": ["Isolate $TARGET and delete the rogue scheduled task", "Re-enable and force a full Defender scan; check tamper-protection is on", "Reset $USER1 and review what it touched", "Hunt other hosts for the same task path / Defender-off events", "Close it — Defender toggling off is normal"],
+     "answer": ["Isolate $TARGET and delete the rogue scheduled task", "Re-enable and force a full Defender scan; check tamper-protection is on", "Reset $USER1 and review what it touched", "Hunt other hosts for the same task path / Defender-off events"],
+     "explain": "Remove the persistence, restore and rescan the AV (and enable tamper protection so it can't be silenced again), rotate the abusing account, and sweep the fleet for the same TTP."}
+  ]
+}

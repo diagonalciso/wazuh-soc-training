@@ -24,6 +24,15 @@ auth + on-host command activity rather than perimeter brute force):
   linux_log_tamper   -> rule 100214 (system log tampering)      T1070.002
   linux_cron_persist -> rule 100215 (cron persistence)          T1053.003
 
+Windows post-compromise / assume-breach (stolen creds + on-host actions):
+
+  win_pth          -> rule 100135 (4624 type3 NTLM — Pass-the-Hash)     T1550.002
+  win_ptt          -> rule 100136 (4624 type9 explicit — Pass-the-Ticket) T1550.003
+  win_rdp_hijack   -> rule 100137 (4778 session reconnect — hijack)     T1563.002
+  win_dcsync       -> rule 100138 (4662 replication rights — DCSync)    T1003.006
+  win_schtask      -> rule 100139 (4698 scheduled task — persistence)   T1053.005
+  win_defender_off -> rule 100170 (Defender 5001 real-time prot off)    T1562.001
+
 The post-exploitation templates emit `snoopy` command-audit lines (no stock
 rule exists for them); the training pack matches full_log with <match>.
 

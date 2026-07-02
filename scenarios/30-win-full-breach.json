@@ -1,0 +1,65 @@
+{
+  "id": "win-full-breach",
+  "title": "Domain Compromise Kill-Chain (Windows capstone)",
+  "difficulty": "advanced",
+  "duration_min": 24,
+  "briefing": "Capstone. In one window $TARGET saw the whole Windows kill chain off stolen credentials: a Pass-the-Hash NTLM network logon for $USER1 from an unfamiliar workstation, then a Pass-the-Ticket explicit-credential logon, then a DCSync replication request (4662) pulling directory secrets, then a masqueraded scheduled task for persistence, and finally Windows Defender's real-time protection switched off to cover the payload. Reconstruct the chain, order it, judge the blast radius, and build a containment plan that assumes domain-wide compromise.",
+  "dashboard_hint": "agent.name: $TARGET, sort by @timestamp. Expect: 100135 PtH NTLM type3 logon -> 100136 PtT type9 explicit-cred logon -> 100138 DCSync 4662 (the Replicating Directory Changes GUID 1131f6aa..., requester is a USER not a DC) -> 100139 4698 scheduled task (encoded powershell) -> 100170 Defender 5001 disabled. The DCSync is the pivot: once krbtgt can be pulled, assume the whole domain is owned.",
+  "randomize": {
+    "ips": {"SRC1": "internal"},
+    "users": {"USER1": true},
+    "targets": {"TARGET": {"question": "target", "os": "windows"}}
+  },
+  "inject": {
+    "steps": [
+      {"template": "win_pth", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [2.0, 3.0]},
+      {"template": "win_ptt", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 2.0]},
+      {"template": "win_dcsync", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 2.0]},
+      {"template": "win_schtask", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 2.0]},
+      {"template": "win_defender_off", "agent": "$TARGET", "srcips": ["$SRC1"], "user": "$USER1", "count": 1, "spacing": [1.0, 2.0]}
+    ]
+  },
+  "ground_truth": {
+    "attack_type": "Full Windows domain compromise (stolen creds to DCSync to persistence)",
+    "target": "$TARGET",
+    "mitre": "T1003.006",
+    "severity": "Critical"
+  },
+  "questions": [
+    {"id": "type", "type": "choice", "weight": 2,
+     "prompt": "Best overall characterisation?",
+     "options": ["Full domain kill-chain: credential reuse -> lateral logon -> DCSync -> persistence -> defense evasion", "Isolated brute-force attempt", "Routine domain replication", "A single phishing click"],
+     "answer": "Full domain kill-chain: credential reuse -> lateral logon -> DCSync -> persistence -> defense evasion",
+     "explain": "PtH + PtT logons, a DCSync secret pull, a persistence task, and Defender being disabled together form a complete domain-compromise chain from stolen creds to entrenchment."},
+    {"id": "target", "type": "choice", "weight": 1,
+     "prompt": "Which host logged this chain?",
+     "options": ["$TARGET"],
+     "answer": "$TARGET",
+     "explain": "All events land on $TARGET, though the DCSync means the impact is domain-wide, not just this host."},
+    {"id": "stages", "type": "multi", "weight": 3,
+     "prompt": "Which stages occurred? (select all)",
+     "options": ["Pass-the-Hash NTLM logon", "Pass-the-Ticket explicit-credential logon", "DCSync directory replication", "Scheduled-task persistence", "Windows Defender disabled", "Ransomware encryption"],
+     "answer": ["Pass-the-Hash NTLM logon", "Pass-the-Ticket explicit-credential logon", "DCSync directory replication", "Scheduled-task persistence", "Windows Defender disabled"],
+     "explain": "All five injected stages are present; no encryption/ransomware stage occurred."},
+    {"id": "pivot", "type": "choice", "weight": 3,
+     "prompt": "Which event is the most severe and why?",
+     "options": ["The DCSync — it can pull krbtgt and hand over the whole domain", "The Defender-off — AV is important", "The first NTLM logon — it started it", "The scheduled task — persistence is worst"],
+     "answer": "The DCSync — it can pull krbtgt and hand over the whole domain",
+     "explain": "DCSync (T1003.006) lets the attacker extract the krbtgt hash and forge Golden Tickets, converting host access into persistent domain-wide control."},
+    {"id": "persist", "type": "choice", "weight": 2,
+     "prompt": "You reset $USER1 and delete the scheduled task. Is the domain safe?",
+     "options": ["No — if krbtgt was pulled, forged tickets survive any single account reset", "Yes — resetting the abused account ends it", "Yes — deleting the task is enough", "No — but only the Defender change matters"],
+     "answer": "No — if krbtgt was pulled, forged tickets survive any single account reset",
+     "explain": "Golden Tickets minted from a stolen krbtgt hash bypass account resets; only a double krbtgt rotation invalidates them."},
+    {"id": "mitre", "type": "multi", "weight": 2,
+     "prompt": "Which MITRE techniques apply? (select all)",
+     "options": ["T1550.002 Pass the Hash", "T1550.003 Pass the Ticket", "T1003.006 DCSync", "T1053.005 Scheduled Task", "T1562.001 Impair Defenses", "T1078 Valid Accounts"],
+     "answer": ["T1550.002 Pass the Hash", "T1550.003 Pass the Ticket", "T1003.006 DCSync", "T1053.005 Scheduled Task", "T1562.001 Impair Defenses", "T1078 Valid Accounts"],
+     "explain": "Each stage maps to its technique, all built on valid/stolen accounts (T1078) — every option applies."},
+    {"id": "containment", "type": "multi", "weight": 3,
+     "prompt": "Containment plan (select all that apply):",
+     "options": ["Isolate $TARGET and preserve a forensic image", "Rotate krbtgt twice and force a domain-wide privileged-credential reset", "Reset $USER1 and strip any unneeded replication rights", "Re-enable Defender + tamper protection and delete the rogue task", "Hunt for Golden Ticket use and the same TTPs on other hosts", "Close the alert — replication is normal"],
+     "answer": ["Isolate $TARGET and preserve a forensic image", "Rotate krbtgt twice and force a domain-wide privileged-credential reset", "Reset $USER1 and strip any unneeded replication rights", "Re-enable Defender + tamper protection and delete the rogue task", "Hunt for Golden Ticket use and the same TTPs on other hosts"],
+     "explain": "Assume domain compromise: isolate and image, double-rotate krbtgt and mass-reset privileged creds, remove the abused rights and persistence, restore AV, and hunt for forged tickets and lateral spread."}
+  ]
+}

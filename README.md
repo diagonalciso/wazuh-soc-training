@@ -86,7 +86,7 @@ network attacks, that `srcip` is decoded) before wiring it into a scenario.
 
 ## Scenarios
 
-24 drills across three levels; the tool serves a random one at the chosen level.
+30 drills across three levels; the tool serves a random one at the chosen level.
 Titles are hidden from the trainee (shown only at debrief).
 
 **Linux / web** (stock rules 5710/5716/31106):
@@ -129,6 +129,18 @@ agents only):
 | `scenarios/22-linux-antiforensics.json` | advanced | 5715 + 100213 + 100214 | history + system-log wiping; local logs untrusted, pivot to forwarded copy, T1070.003/.002 |
 | `scenarios/23-linux-lateral-session.json` | advanced | 5715 (internal srcip) + 5402/5403 | east-west movement with a reused key; internal RFC1918 source is the tell, T1021.004 |
 | `scenarios/24-linux-full-breach.json` | advanced | full 5715→5402/5403→100210→100212→100211→100214 chain | capstone: credential access to anti-forensics; complete eviction plan, T1078→T1070.002 |
+
+**Windows assume-breach** (stolen creds / hijacked sessions — stock rule 100100
+base + custom pack 100135–100139 / 100170, Windows agents only):
+
+| File | Level | Event(s) | Teaches |
+|------|-------|----------|---------|
+| `scenarios/25-win-pass-the-hash.json` | intermediate | 4624 type 3 NTLM | Pass-the-Hash: reused NTLM hash, no Kerberos, odd workstation, T1550.002 |
+| `scenarios/26-win-pass-the-ticket.json` | intermediate | 4624 type 9 explicit | Pass-the-Ticket / overpass-the-hash via runas /netonly, T1550.003 |
+| `scenarios/27-win-rdp-session-hijack.json` | intermediate | 4778 session reconnect | live RDP session takeover from an unfamiliar client, T1563.002 |
+| `scenarios/28-win-dcsync.json` | advanced | 4662 replication rights | DCSync: non-DC principal replicating secrets, krbtgt blast radius, T1003.006 |
+| `scenarios/29-win-persistence-evasion.json` | intermediate | 4698 + Defender 5001 | scheduled-task persistence + Defender kill; masquerade tell, T1053.005 / T1562.001 |
+| `scenarios/30-win-full-breach.json` | advanced | full 100135→100136→100138→100139→100170 chain | capstone: PtH/PtT → DCSync → persistence → evasion; assume domain compromise, T1550→T1003.006 |
 
 The post-exploitation on-host commands (reverse shell, log wipe, key implant,
 cron) have no reliable stock rule, so they are injected as `snoopy` command-audit
