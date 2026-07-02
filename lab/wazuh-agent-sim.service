@@ -8,23 +8,26 @@ Wants=network-online.target
 Type=simple
 # Path is rewritten by bootstrap.sh to the installed location.
 WorkingDirectory=/opt/wazuh-soc-training/lab
-# The keys file is a secret (0600 root). LoadCredential hands it to the service
-# via %d (=$CREDENTIALS_DIRECTORY) so it stays unreadable to everyone else and
-# still works under DynamicUser (random uid can't open a root-owned 0600 file).
-LoadCredential=agent_sim_keys:/opt/wazuh-soc-training/lab/agent_sim.keys
-# The osmap (name -> OS identity) is not secret; pass its path directly. It must
-# be world-readable so DynamicUser can open it.
+# The keys file is a secret (0600 root). Runs as root so it can read the file
+# directly -- portable across systemd versions. (The %d/LoadCredential trick
+# needs systemd >= 250; the target box ships Ubuntu 22.04 = systemd 249, where
+# the %d specifier fails with "Invalid slot".) osmap is not secret.
 ExecStart=/usr/bin/python3 /opt/wazuh-soc-training/lab/agent_sim.py \
   --manager ${MANAGER_IP} --port ${MANAGER_PORT} \
-  --interval ${KEEPALIVE_INTERVAL} --keys %d/agent_sim_keys \
+  --interval ${KEEPALIVE_INTERVAL} \
+  --keys /opt/wazuh-soc-training/lab/agent_sim.keys \
   --osmap /opt/wazuh-soc-training/lab/agent_sim.osmap
 Environment=MANAGER_IP=127.0.0.1
 Environment=MANAGER_PORT=1514
 Environment=KEEPALIVE_INTERVAL=30
 Restart=always
 RestartSec=10
-# Sends only network keepalives; no privileged access needed.
-DynamicUser=yes
+# Sends only network keepalives; cheap hardening that works on systemd 249.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/wazuh-soc-training/lab
+ProtectHome=yes
+PrivateTmp=yes
 
 [Install]
 WantedBy=multi-user.target

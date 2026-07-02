@@ -15,6 +15,12 @@ Vagrant.configure("2") do |config|
   config.vm.box = "generic/ubuntu2204"      # works on libvirt AND virtualbox
   config.vm.hostname = "wazuh-lab"
 
+  # Sync the repo to /vagrant via rsync. Explicit + provider-agnostic: the
+  # libvirt default (9p/virtiofs/NFS) isn't wired up on a bare host, so
+  # bootstrap.sh would be missing. rsync only needs rsync on host+guest.
+  config.vm.synced_folder ".", "/vagrant", type: "rsync",
+    rsync__exclude: [".git/", ".vagrant/"]
+
   # Private network so you can reach the dashboard/tool from the host.
   config.vm.network "private_network", ip: "192.168.56.20"
 
