@@ -1,5 +1,7 @@
 # wazuh-soc-training
 
+> SOC analyst training platform for Wazuh — injects labeled attacks into a live manager; trainees triage in the real dashboard; auto-graded. Scripted virtual-endpoint lab included.
+
 > ## ⚠️ TRAINING TOOL — not a security control
 > Injects **synthetic, labeled** attack events into a **live Wazuh manager** so
 > analysts can practise triage in the real dashboard. Run it on a lab/training
