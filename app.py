@@ -115,7 +115,9 @@ color:#ffb3ae;font-size:13px}
 def page(title, body):
     return ("<!doctype html><html><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>%s</title><style>%s</style></head><body><div class=wrap>"
+            "<title>%s</title>"
+            "<link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>\">"
+            "<style>%s</style></head><body><div class=wrap>"
             "<div class=top><h1>&#9650; wazuh-soc-training</h1>"
             "<span class=badge>SOC analyst drills</span>"
             "<span class='badge' style='margin-left:auto'>live Wazuh</span></div>"
